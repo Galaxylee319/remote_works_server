@@ -79,8 +79,8 @@ header .nav-links button:hover {
 /* === Main Content === */
 main {
   padding: 16px;
-  max-width: 900px;
-  margin: 0 auto;
+  max-width: 1100px;
+  margin: 0; /* 桌面端左对齐，不再水平居中 */
 }
 
 /* === Breadcrumbs === */
