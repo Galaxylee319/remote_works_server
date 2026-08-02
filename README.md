@@ -1,226 +1,141 @@
-# Remote Works Server
+# Remote Works Server (v2)
 
-A lightweight, mobile-friendly web server for browsing, reading, and downloading files in `~/remote_works/`. Designed for researchers who want to remotely view experiment results, Markdown reports, and PDF documents from their phone or tablet.
+轻量、移动端友好的远程文件浏览与 Markdown 实时渲染服务。
+服务 `~/remote_works/`，登录后可在手机/平板浏览、预览、下载文件，
+并一键把 Markdown 导出为 PDF。
 
-## Features
+## 功能
 
-- **File Browser** — browse directories, search files, sort by modification time
-- **Markdown Rendering** — GitHub Flavored Markdown with LaTeX math, Mermaid diagrams, syntax highlighting, tables, and task lists
-- **PDF Export** — generate PDF from any Markdown file with one click
-- **PDF Preview** — view PDF files directly in the browser
-- **Image Preview** — view PNG, JPG, GIF, SVG, WebP images
-- **Text/Code Viewer** — view text, CSV, log, and source code files
-- **Mobile-First UI** — designed for phone/tablet vertical browsing
-- **Authentication** — username + bcrypt password protection
-- **Auto-Start** — systemd service for boot-time startup and crash recovery
+- 文件浏览：目录树、文件名搜索、最近更新、按名称/时间/大小排序
+- Markdown 实时渲染：GFM、LaTeX（MathJax）、Mermaid、代码高亮、TOC、脚注、任务列表
+- PDF 导出：Playwright/Chromium 服务端渲染，内容哈希缓存（文件修改后自动失效）
+- PDF / 图片 / 文本 / CSV / 日志在线预览
+- 目录打包下载（ZIP，带文件数与大小上限）
+- 认证：bcrypt 密码 + 随机会话 token + 登录限速
+- 安全：路径穿越防护（realpath 校验）、只读服务、隐藏文件默认不可见
+- 稳定性：systemd 开机自启、崩溃自动重启、沙箱加固（ProtectSystem/ProtectHome）
 
-## Tech Stack
+## 技术栈
 
-| Component | Choice | Purpose |
-|-----------|--------|---------|
-| Web framework | FastAPI + uvicorn | Async Python web server |
-| Markdown | markdown-it-py + mdit-py-plugins | GFM rendering |
-| LaTeX | MathJax 3 (CDN) | Client-side math rendering |
-| Diagrams | Mermaid.js (CDN) | Client-side diagram rendering |
-| Code highlight | Pygments (Monokai theme) | Syntax highlighting |
-| PDF generation | Playwright (Chromium) | HTML-to-PDF printing |
-| Auth | bcrypt + session cookies | Password protection |
-| File watching | watchdog | Real-time file change detection |
-| Deployment | systemd | Auto-start, auto-restart |
+| 组件 | 选择 |
+|------|------|
+| Web 框架 | FastAPI + uvicorn（单进程，会话存内存） |
+| Markdown | markdown-it-py + mdit-py-plugins + Pygments |
+| LaTeX | MathJax 3（CDN） |
+| Mermaid | Mermaid.js 10（CDN） |
+| PDF | Playwright + Chromium（HTML→PDF） |
+| 认证 | bcrypt + secrets 随机 token |
+| 部署 | systemd（Ubuntu 20.04 已验证） |
 
-### Why This Stack?
-
-- **Stability**: Python FastAPI is production-proven, single-process, minimal moving parts
-- **Mobile reading**: MathJax and Mermaid render client-side with excellent mobile support
-- **PDF quality**: Playwright uses real Chromium rendering — handles MathJax, Mermaid, and CSS correctly
-- **Simple deployment**: One virtualenv, one systemd unit, no Docker required
-- **Ubuntu 20.04 native**: All dependencies available via apt + pip
-
-### Alternatives Considered
-
-- **File Browser + separate Markdown service**: More moving parts, two services to manage
-- **MkDocs Material**: Static site generator, requires rebuild on every file change
-- **Node.js stack**: Added language dependency; user's environment is Python-centric
-
-## Quick Start
-
-```bash
-# 1. Install
-cd ~/remote_works_server
-./install.sh
-
-# 2. Edit config (optional)
-nano config.yaml
-
-# 3. Start server
-./start.sh
-
-# 4. Open browser
-# http://<host-ip>:8088
-```
-
-## Configuration
-
-Edit `config.yaml`:
-
-```yaml
-server:
-  host: "0.0.0.0"       # Listen on all interfaces
-  port: 8088             # HTTP port
-  secret_key: "..."      # Session cookie secret (auto-generated)
-
-paths:
-  root_dir: "/home/galaxybot/remote_works"   # Served directory (read-only)
-  cache_dir: "/home/galaxybot/.cache/remote_works_server"
-
-auth:
-  enabled: true
-  username: "galaxybot"
-  password_hash: "..."   # bcrypt hash (set by install.sh)
-
-markdown:
-  math: true             # LaTeX via MathJax
-  mermaid: true          # Mermaid diagrams
-  toc: true              # Table of contents
-  highlight: true        # Code syntax highlighting
-
-pdf:
-  enabled: true
-  engine: "playwright"   # PDF engine
-  cache: true            # Cache generated PDFs
-  page_format: "A4"
-```
-
-## Systemd Service (Auto-Start)
-
-```bash
-# Install service
-sudo cp ~/remote_works_server/remote-works-server.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now remote-works-server
-
-# Management commands
-sudo systemctl start remote-works-server     # Start
-sudo systemctl stop remote-works-server      # Stop
-sudo systemctl restart remote-works-server   # Restart
-sudo systemctl status remote-works-server    # Status
-journalctl -u remote-works-server -f         # View logs (follow)
-journalctl -u remote-works-server -n 50      # Last 50 lines
-```
-
-## Access from Phone/Tablet
-
-### Option 1: Tailscale (Recommended)
-
-If you use Tailscale, the server is automatically accessible at:
+## 目录结构
 
 ```
-http://<tailscale-ip>:8088
+remote_works_server/
+├── app/                    # v2 主实现（唯一运行入口）
+│   ├── main.py             # FastAPI 路由
+│   ├── config.py           # 配置加载（顶层键 + 旧 paths.* 兼容）
+│   ├── auth.py             # 认证中间件/会话/限速
+│   ├── file_browser.py     # 安全路径解析/列表/搜索/最近更新
+│   ├── markdown_utils.py   # Markdown 渲染
+│   └── pdf_utils.py        # PDF 生成与缓存
+├── templates/ static/      # 移动端优先 UI
+├── config.yaml             # 配置
+├── run.py                  # 入口（systemd 与 start.sh 均指向它）
+├── install.sh / start.sh / rws.sh
+├── remote-works-server.service
+└── server.py auth.py ...   # 【旧版遗留】v1 实现，已不再运行，仅存档
 ```
 
-Your phone just needs the Tailscale app installed and connected to the same tailnet.
-
-### Option 2: Caddy Reverse Proxy + HTTPS
-
-```bash
-sudo apt-get install caddy
-
-# /etc/caddy/Caddyfile
-your-domain.example.com {
-    reverse_proxy localhost:8088
-}
-```
-
-### Option 3: Direct IP + Firewall
-
-```bash
-sudo ufw allow 8088/tcp
-# Then access http://<host-public-ip>:8088
-```
-
-**Warning**: Direct IP access without HTTPS is insecure. Use Tailscale or Caddy+HTTPS for production.
-
-## Managing Passwords
-
-### Set/Change Password
+## 快速开始
 
 ```bash
 cd ~/remote_works_server
-source venv/bin/activate
-python3 -c "from auth import get_auth; get_auth().set_password('new-password')"
-deactivate
+./install.sh                 # 首次安装（venv + 依赖 + Playwright Chromium + 密码）
+./rws.sh start               # 前台可 ./start.sh
+./rws.sh test                # 健康检查
 ```
 
-### Disable Authentication
+浏览器访问 `http://<tailscale-ip>:8088`，登录后即可使用。
 
-Edit `config.yaml` and set `auth.enabled: false`, then restart the server.
+## 配置（config.yaml）
 
-## Managing Cache
+| 键 | 说明 | 默认 |
+|------|------|------|
+| `root_dir` | 服务根目录 | `~/remote_works` |
+| `cache_dir` | PDF/临时缓存 | `~/.cache/remote_works_server` |
+| `host` / `port` | 监听地址 | `0.0.0.0` / `8088` |
+| `auth.enabled` | 是否启用登录 | `true` |
+| `auth.session_ttl_days` | 会话有效期 | `30` |
+| `auth.cookie_secure` | HTTPS 下设为 `true` | `false` |
+| `auth.max_login_attempts` | 登录失败锁定阈值 | `5` |
+| `auth.login_lockout_seconds` | 锁定窗口 | `300` |
+| `markdown.*` | math/mermaid/toc/highlight 开关 | 全开 |
+| `pdf.cache` | PDF 内容哈希缓存 | `true` |
+| `search.exclude_dirs` | 搜索/最近更新跳过的目录 | `data, typeI_logs, .git` |
+| `zip.max_files/max_bytes` | 目录打包上限 | 5000 文件 / 2GiB |
+
+## 常用命令
 
 ```bash
-# Clear PDF cache
-rm -rf ~/.cache/remote_works_server/pdf/*
-
-# Clear all cache
-rm -rf ~/.cache/remote_works_server/*
+./rws.sh start|stop|restart|status     # 服务管理
+./rws.sh logs [N]                      # 日志
+./rws.sh set-password                  # 修改密码（所有会话失效）
+./rws.sh test                          # 健康检查
 ```
 
-Cache is automatically invalidated when source files are modified.
-
-## Security
-
-- All file access is restricted to `~/remote_works/` only
-- Path traversal attacks are blocked (`../` is resolved and verified)
-- Passwords are bcrypt-hashed, never stored in plaintext
-- Session cookies are HttpOnly and SameSite=Lax
-- Default mode is read-only — no upload, delete, or rename
-- Static file serving is scoped to the static/ directory only
-- systemd service uses `ProtectSystem=strict` and `NoNewPrivileges=yes`
-
-## Testing
-
-Test files are in `~/remote_works/`:
-
-| File | Tests |
-|------|-------|
-| `test_markdown.md` | Headings, code, lists, blockquotes, images, links |
-| `test_formula.md` | LaTeX inline (`$...$`) and block (`$$...$$`) formulas |
-| `test_mermaid.md` | Mermaid flowcharts, sequence diagrams |
-| `test_table.md` | Complex tables with alignment and formatting |
-| `test_pdf.pdf` | PDF preview capability |
-
-## Troubleshooting
-
-### PDF generation fails
+等价 systemd 命令（服务为系统级）：
 
 ```bash
-# Install Chromium system dependencies
-sudo apt-get install -y chromium-browser
-
-# Or install Playwright system deps
-cd ~/remote_works_server
-source venv/bin/activate
-python3 -m playwright install --with-deps chromium
+sudo systemctl restart remote-works-server
+journalctl -u remote-works-server -f
 ```
 
-### Port already in use
+清理 PDF 缓存：`rm -rf ~/.cache/remote_works_server/pdf`（缓存按内容哈希命名，删除无害）。
 
-```bash
-# Change port in config.yaml, or kill existing process
-sudo lsof -i :8088
-```
+## API 一览
 
-### File changes not showing
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/browse/{path}` | 目录浏览 / 文件视图 |
+| GET | `/view/{path}` | 按类型预览 |
+| GET | `/md/{path}` | Markdown 阅读页 |
+| GET | `/api/files/{path}` | 内联预览（图片/PDF） |
+| GET | `/download/{path}` | 下载原文件 |
+| GET | `/api/download-zip/{path}` | 目录打包下载 |
+| GET | `/search?q=` `/recent` | 搜索 / 最近更新页面 |
+| GET/POST | `/api/pdf/{path}` | 导出 PDF |
+| POST | `/api/pdf/{path}/regenerate` | 强制重新生成 |
+| POST | `/api/login` `/api/logout` `/api/set-password` | 认证 |
+| GET | `/api/health` `/api/status` | 健康/状态检查 |
 
-The server reads files directly from disk on each request. Just refresh the browser page.
+## 安全说明
 
-### Permission denied
+- 所有文件访问经 `resolve_safe_path` 校验（realpath 必须位于 `root_dir` 内，符号链接逃逸被拒绝）。
+- 服务只读，无上传/删除/重命名接口。
+- 密码为 bcrypt 哈希，随机会话 token 存内存，登录有滑动窗口限速。
+- 隐藏文件（`.` 开头）在浏览/搜索中默认不可见。
+- systemd 加固：`ProtectSystem=strict`、`ProtectHome=read-only`、`NoNewPrivileges`、`PrivateTmp`。
+- 公网部署建议在前面加 Caddy/nginx HTTPS，并把 `auth.cookie_secure` 设为 `true`。
 
-Ensure the server user can read `~/remote_works/`:
-```bash
-chmod -R +r ~/remote_works/
-```
+## v2 升级说明（2026-08-02）
+
+**修复/优化**
+
+1. 合并两套实现：原先 systemd 运行旧 `server.py`，`app/` 是未完成的重构
+   （模板缺失、固定会话 token、配置键不一致、无启动入口）。
+2. 认证升级：随机 48 字节会话 token + 有效期；登录限速；改密后全部会话失效。
+3. PDF 生成：单例浏览器 + asyncio 锁（修复并发重复启动）；内容哈希缓存
+   （原按 mtime，缓存失效不可靠）；失败清理临时文件；明确错误提示。
+4. 稳定性：统一异常处理（API 返回 JSON、页面返回错误页）；文本预览 2MB 截断；
+   大目录打包上限；隐藏 `.git` 等目录；搜索/最近更新跳过 `data`、`typeI_logs`。
+5. 运维：`rws.sh` 修正为系统级 systemd 命令（原为 `--user`，无法工作）；
+   新增 `set-password`、`test` 子命令；systemd 增加沙箱加固。
+6. 配置统一：顶层 `root_dir/cache_dir/host/port` 为准，兼容旧 `paths.*`。
+
+**回滚**：项目已用 git 管理，升级前基线为 commit `837ac63`。
+`git checkout 837ac63 -- .` 可恢复旧实现（systemd 需改回 `server.py` 入口）。
 
 ## License
 
 MIT
+

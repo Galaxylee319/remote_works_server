@@ -5,9 +5,10 @@
 
 <div class="error-page">
   <div class="icon">&#9888;&#65039;</div>
-  <h1>{{ error }}</h1>
-  <p>{{ message }}</p>
-  <a href="/browse/">Back to Files</a>
+  <h1>{{ error or "Error" }}</h1>
+  <p>{{ message or "发生未知错误" }}</p>
+  <a href="/browse/">返回文件列表</a>
 </div>
 
 {% endblock %}
+

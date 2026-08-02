@@ -3,7 +3,6 @@
 
 {% block content %}
 
-<!-- Breadcrumbs -->
 <nav class="breadcrumbs">
   {% for crumb in breadcrumbs %}
     {% if not loop.last %}
@@ -15,146 +14,63 @@
   {% endfor %}
 </nav>
 
-<!-- Search -->
-<form class="search-bar" action="/api/search" method="get" onsubmit="searchFiles(event)">
-  <input type="text" name="q" id="search-input" placeholder="Search files..." autocomplete="off">
-  <button type="submit">Search</button>
+<form class="search-bar" action="/search" method="get">
+  <input type="text" name="q" placeholder="搜索文件名..." autocomplete="off">
+  <button type="submit">搜索</button>
 </form>
 
-<div id="search-results" style="display:none;"></div>
-
-<!-- Action Bar -->
 <div class="action-bar">
-  <a href="/api/recent">Recently Updated</a>
-  <a href="javascript:location.reload()">Refresh</a>
-</div>
-
-<!-- File List -->
-<div class="file-list" id="file-list">
-  {% if entries %}
-    {% for entry in entries %}
-      {% if entry.is_dir %}
-        <a class="file-item dir" href="/browse/{{ entry.path }}">
-          <span class="icon">&#128193;</span>
-          <div class="info">
-            <div class="name">{{ entry.name }}/</div>
-            <div class="meta">{{ entry.mtime }}</div>
-          </div>
-          <div class="actions">
-            <span class="type-badge">folder</span>
-          </div>
-        </a>
-      {% elif entry.type == "markdown" %}
-        <div class="file-item">
-          <span class="icon">&#128196;</span>
-          <div class="info">
-            <div class="name">{{ entry.name }}</div>
-            <div class="meta">{{ entry.size_str }} &middot; {{ entry.mtime }}</div>
-          </div>
-          <div class="actions">
-            <a href="/view/{{ entry.path }}">View</a>
-            <a href="/download/{{ entry.path }}" download>Download</a>
-          </div>
-        </div>
-      {% elif entry.type == "pdf" %}
-        <div class="file-item">
-          <span class="icon">&#128214;</span>
-          <div class="info">
-            <div class="name">{{ entry.name }}</div>
-            <div class="meta">{{ entry.size_str }} &middot; {{ entry.mtime }}</div>
-          </div>
-          <div class="actions">
-            <a href="/view/{{ entry.path }}">View</a>
-            <a href="/download/{{ entry.path }}" download>Download</a>
-          </div>
-        </div>
-      {% elif entry.type == "image" %}
-        <div class="file-item">
-          <span class="icon">&#128247;</span>
-          <div class="info">
-            <div class="name">{{ entry.name }}</div>
-            <div class="meta">{{ entry.size_str }} &middot; {{ entry.mtime }}</div>
-          </div>
-          <div class="actions">
-            <a href="/view/{{ entry.path }}">View</a>
-            <a href="/download/{{ entry.path }}" download>Download</a>
-          </div>
-        </div>
-      {% else %}
-        <div class="file-item">
-          <span class="icon">&#128206;</span>
-          <div class="info">
-            <div class="name">{{ entry.name }}</div>
-            <div class="meta">{{ entry.size_str }} &middot; {{ entry.mtime }}</div>
-          </div>
-          <div class="actions">
-            {% if entry.type in ("text", "code", "data") %}
-            <a href="/view/{{ entry.path }}">View</a>
-            {% endif %}
-            <a href="/download/{{ entry.path }}" download>Download</a>
-          </div>
-        </div>
-      {% endif %}
-    {% endfor %}
-  {% else %}
-    <div class="empty-state">
-      <div class="icon">&#128194;</div>
-      <p>This directory is empty</p>
-    </div>
+  <a href="/recent">最近更新</a>
+  <span class="sort-links">
+    排序:
+    <a href="?sort=name" class="{{ 'active' if sort == 'name' else '' }}">名称</a>
+    <a href="?sort=-mtime" class="{{ 'active' if sort == '-mtime' else '' }}">时间</a>
+    <a href="?sort=-size" class="{{ 'active' if sort == '-size' else '' }}">大小</a>
+  </span>
+  <a href="javascript:location.reload()">刷新</a>
+  {% if current_path and zip_enabled %}
+  <a href="/api/download-zip/{{ current_path }}" class="zip-link">打包下载本目录</a>
   {% endif %}
 </div>
 
-<script>
-async function searchFiles(e) {
-  e.preventDefault();
-  const q = document.getElementById('search-input').value.trim();
-  if (!q) return;
-
-  const resultsDiv = document.getElementById('search-results');
-  const fileList = document.getElementById('file-list');
-
-  try {
-    const resp = await fetch('/api/search?q=' + encodeURIComponent(q));
-    const data = await resp.json();
-
-    if (data.results.length === 0) {
-      resultsDiv.innerHTML = '<div class="empty-state"><p>No files found matching "' + q + '"</p></div>';
-      resultsDiv.style.display = 'block';
-      return;
-    }
-
-    let html = '<div class="section-title">Search results for "' + q + '"</div><div class="file-list">';
-    for (const entry of data.results) {
-      const icons = {
-        directory: '&#128193;', markdown: '&#128196;', pdf: '&#128214;',
-        image: '&#128247;', text: '&#128206;', code: '&#128206;',
-        data: '&#128206;', default: '&#128206;'
-      };
-      const icon = icons[entry.type] || icons.default;
-      const viewUrl = entry.is_dir ? '/browse/' + entry.path : '/view/' + entry.path;
-
-      html += '<div class="file-item">';
-      html += '<span class="icon">' + icon + '</span>';
-      html += '<div class="info">';
-      html += '<div class="name">' + entry.name + (entry.is_dir ? '/' : '') + '</div>';
-      html += '<div class="meta">' + entry.size_str + ' &middot; ' + entry.mtime + '</div>';
-      html += '</div>';
-      html += '<div class="actions">';
-      html += '<a href="' + viewUrl + '">' + (entry.is_dir ? 'Open' : 'View') + '</a>';
-      if (!entry.is_dir) {
-        html += '<a href="/download/' + entry.path + '" download>Download</a>';
-      }
-      html += '</div></div>';
-    }
-    html += '</div>';
-
-    resultsDiv.innerHTML = html;
-    resultsDiv.style.display = 'block';
-  } catch (err) {
-    resultsDiv.innerHTML = '<div class="empty-state"><p>Search failed</p></div>';
-    resultsDiv.style.display = 'block';
-  }
-}
-</script>
+<div class="file-list" id="file-list">
+  {% for entry in entries %}
+    {% if entry.is_dir %}
+      <div class="file-item dir">
+        <span class="icon">&#128193;</span>
+        <div class="info">
+          <div class="name"><a href="/browse/{{ entry.path }}/">{{ entry.name }}/</a></div>
+          <div class="meta">目录</div>
+        </div>
+        <div class="actions">
+          {% if zip_enabled %}
+          <a href="/api/download-zip/{{ entry.path }}">ZIP</a>
+          {% endif %}
+        </div>
+      </div>
+    {% else %}
+      <div class="file-item">
+        <span class="icon">&#128196;</span>
+        <div class="info">
+          <div class="name">
+            {% if entry.type == "markdown" or entry.type == "pdf" or entry.type == "image" or entry.type in ("text", "code", "data", "web", "ros", "rosbag") %}
+            <a href="/view/{{ entry.path }}">{{ entry.name }}</a>
+            {% else %}
+            {{ entry.name }}
+            {% endif %}
+          </div>
+          <div class="meta">{{ entry.size_str }} &middot; {{ entry.mtime_str }} &middot; {{ entry.type }}</div>
+        </div>
+        <div class="actions">
+          {% if entry.type == "markdown" or entry.type == "pdf" or entry.type == "image" or entry.type in ("text", "code", "data", "web", "ros", "rosbag") %}
+          <a href="/view/{{ entry.path }}">查看</a>
+          {% endif %}
+          <a href="/download/{{ entry.path }}" download>下载</a>
+        </div>
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
 
 {% endblock %}
+

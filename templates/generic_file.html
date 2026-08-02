@@ -12,12 +12,13 @@
 <div class="generic-file">
   <div class="icon">&#128196;</div>
   <h2>{{ entry.name }}</h2>
-  <p class="meta">{{ entry.size_str }} &middot; {{ entry.mtime }}</p>
-  <p class="meta">Type: {{ entry.type }}</p>
+  <p class="meta">{{ entry.size_str }} &middot; {{ entry.mtime_str }}</p>
+  <p class="meta">类型: {{ entry.type }}</p>
   <br>
-  <a href="/download/{{ entry.path }}" download class="download-btn">Download File</a>
+  <a href="/download/{{ entry.path }}" download class="download-btn">下载文件</a>
   <br><br>
-  <a href="/browse/">Back to Files</a>
+  <a href="/browse/">返回文件列表</a>
 </div>
 
 {% endblock %}
+

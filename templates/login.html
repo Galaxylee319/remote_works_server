@@ -1,32 +1,34 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <title>Login - Remote Works</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <div class="login-page">
   <div class="login-card">
     <h1>Remote Works</h1>
-    <p class="subtitle">Sign in to access your files</p>
+    <p class="subtitle">登录以访问远程文件</p>
 
     {% if error %}
     <div class="error">{{ error }}</div>
     {% endif %}
 
-    <form method="post" action="/login">
-      <input type="hidden" name="redirect" value="{{ redirect }}">
-      <label for="username">Username</label>
+    <form method="post" action="/api/login">
+      <input type="hidden" name="next" value="{{ next or '/browse/' }}">
+      <label for="username">用户名</label>
       <input type="text" id="username" name="username" required autofocus autocomplete="username">
 
-      <label for="password">Password</label>
+      <label for="password">密码</label>
       <input type="password" id="password" name="password" required autocomplete="current-password">
 
-      <button type="submit">Sign In</button>
+      <button type="submit">登录</button>
     </form>
+    <p class="hint">修改密码：登录后调用 /api/set-password</p>
   </div>
 </div>
 </body>
 </html>
+

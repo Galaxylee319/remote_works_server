@@ -10,14 +10,18 @@
 </nav>
 
 <div class="action-bar">
-  <a href="/browse/">Back to Files</a>
-  <a href="/download/{{ entry.path }}" download>Download</a>
+  <a href="/browse/">返回</a>
+  <a href="/download/{{ entry.path }}" download>下载</a>
 </div>
 
 <div style="margin-bottom:8px;">
-  <span class="meta">{{ entry.size_str }} &middot; {{ entry.mtime }} &middot; {{ entry.extension }}</span>
+  <span class="meta">{{ entry.size_str }} &middot; {{ entry.mtime_str }} &middot; {{ entry.extension }}</span>
+  {% if truncated %}
+  <span class="meta warning">（文件过大，仅预览前 2MB）</span>
+  {% endif %}
 </div>
 
 <pre class="text-viewer">{{ content }}</pre>
 
 {% endblock %}
+

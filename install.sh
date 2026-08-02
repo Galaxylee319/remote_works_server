@@ -92,17 +92,6 @@ echo -e "${YELLOW}[5/6] Setting up authentication...${NC}"
 CONFIG_FILE="$SCRIPT_DIR/config.yaml"
 source "$VENV_DIR/bin/activate"
 
-# Generate secret key
-SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
-python3 -c "
-import yaml
-with open('$CONFIG_FILE') as f:
-    config = yaml.safe_load(f)
-config['server']['secret_key'] = '$SECRET_KEY'
-with open('$CONFIG_FILE', 'w') as f:
-    yaml.safe_dump(config, f, default_flow_style=False)
-"
-
 echo -n "  Enter password for user '$(grep username "$CONFIG_FILE" | awk '{print $2}' | tr -d '"')': "
 read -s PASSWORD </dev/tty || {
     # Fallback if stdin is not a tty
@@ -115,8 +104,8 @@ if [ -z "$PASSWORD" ]; then
     echo -e "${RED}  Run: source venv/bin/activate && python3 -c \"from auth import get_auth; get_auth().set_password('your-password')\"${NC}"
 else
     python3 -c "
-from auth import get_auth
-get_auth().set_password('$PASSWORD')
+from app.auth import hash_password, persist_password_hash
+persist_password_hash(hash_password('$PASSWORD'))
 "
     echo -e "${GREEN}  Password set successfully${NC}"
 fi

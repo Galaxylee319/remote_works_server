@@ -1,548 +1,660 @@
-"""Main FastAPI application for remote-works-server."""
+"""Remote Works Server v2 — FastAPI application."""
 from __future__ import annotations
 
-import os
-import sys
-import time
-import asyncio
+import logging
 import mimetypes
+import os
+import tempfile
+import time
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
-from fastapi import FastAPI, Request, HTTPException, Response, Form, Query
+from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import (
-    HTMLResponse,
     FileResponse,
-    RedirectResponse,
+    HTMLResponse,
     JSONResponse,
-    PlainTextResponse,
+    RedirectResponse,
+    Response,
 )
-from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.background import BackgroundTask
 
+from app.auth import (
+    SESSION_COOKIE,
+    AuthMiddleware,
+    client_ip,
+    persist_password_hash,
+    rate_limiter,
+    sessions,
+    verify_password,
+)
 from app.config import config
-from app.auth import AuthMiddleware, verify_password, hash_password, SESSION_COOKIE, SESSION_TOKEN
-from app.file_browser import resolve_safe_path, list_directory, get_file_info, search_files, get_recent_files
+from app.file_browser import (
+    get_file_info,
+    get_recent_files,
+    human_size,
+    list_directory,
+    resolve_safe_path,
+    search_files,
+)
 from app.markdown_utils import render_markdown
-from app.pdf_utils import generate_pdf, build_pdf_html, get_cached_pdf
-from app import cache_utils
-from app.watcher import FileWatcher
+from app.pdf_utils import (
+    build_pdf_html,
+    close_browser,
+    generate_pdf,
+    get_cached_pdf,
+    invalidate_pdf_cache,
+)
 
-# ---- App Initialization ----
 
-app = FastAPI(title="Remote Works Server", version="1.0.0")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("remote-works-server")
 
-# Set up Jinja2 templates
-templates_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
-templates = Jinja2Templates(directory=templates_dir)
+app = FastAPI(title="Remote Works Server", version="2.0.0")
 
-# Add auth middleware
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+
+static_dir = os.path.join(BASE_DIR, "static")
+os.makedirs(static_dir, exist_ok=True)
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
 app.add_middleware(AuthMiddleware)
 
-# Static files (CSS, JS)
-static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-os.makedirs(static_dir, exist_ok=True)
+STARTED_AT = time.time()
+TEXT_PREVIEW_LIMIT = 2 * 1024 * 1024  # 2 MiB
 
-# ---- Startup / Shutdown Events ----
+
+# ---------------------------------------------------------------------------
+# Startup / Shutdown
+# ---------------------------------------------------------------------------
 
 @app.on_event("startup")
-async def startup():
-    """Initialize the application."""
-    # Initialize cache DB
-    cache_utils._init_db()
-
-    # Start file watcher
-    if config["file_watcher"]["enabled"]:
-        watcher = FileWatcher(interval=config["file_watcher"]["interval_seconds"])
-        watcher.start()
-        app.state.watcher = watcher
-        print("[Startup] File watcher started")
-
-    # Run initial full scan
-    from app.file_browser import search_files as search, get_recent_files as recent
-    print(f"[Startup] Remote Works Server started")
-    print(f"[Startup] Root directory: {config['root_dir']}")
-    print(f"[Startup] Listening on {config['host']}:{config['port']}")
-    if config["auth"]["enabled"]:
-        print(f"[Startup] Auth enabled (user: {config['auth']['username']})")
+async def startup() -> None:
+    os.makedirs(config["cache_dir"], exist_ok=True)
+    os.makedirs(os.path.join(config["cache_dir"], "pdf"), exist_ok=True)
+    root = config["root_dir"]
+    if not os.path.isdir(root):
+        logger.warning("Root directory missing: %s", root)
+    logger.info(
+        "Started: root=%s cache=%s host=%s port=%s auth=%s",
+        root,
+        config["cache_dir"],
+        config["host"],
+        config["port"],
+        config["auth"]["enabled"],
+    )
 
 
 @app.on_event("shutdown")
-async def shutdown():
-    """Clean up on shutdown."""
-    if hasattr(app.state, "watcher"):
-        app.state.watcher.stop()
-        print("[Shutdown] File watcher stopped")
+async def shutdown() -> None:
+    await close_browser()
+    logger.info("Shutdown complete")
 
-# ---- Helper Functions ----
 
-def _get_breadcrumbs(request_path: str) -> list:
-    """Generate breadcrumb navigation for a given path."""
-    parts = request_path.strip("/").split("/") if request_path.strip("/") else []
-    crumbs = [{"name": "🏠 Home", "path": "/"}]
-    for i, part in enumerate(parts):
-        crumb_path = "/" + "/".join(parts[:i+1])
-        crumbs.append({"name": part, "path": crumb_path})
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _context(request: Request, **kwargs) -> dict:
+    ctx = {
+        "request": request,
+        "authenticated": True,
+        "needs_auth": config["auth"]["enabled"],
+        "pdf_enabled": config["pdf"].get("enabled", True),
+        "zip_enabled": config["zip"].get("enabled", True),
+    }
+    ctx.update(kwargs)
+    return ctx
+
+
+def _breadcrumbs(rel_path: str) -> list:
+    parts = [p for p in rel_path.strip("/").split("/") if p]
+    crumbs = [{"name": "Home", "path": "/browse/"}]
+    acc = ""
+    for part in parts:
+        acc += "/" + part
+        crumbs.append({"name": part, "path": "/browse" + acc + "/"})
     return crumbs
 
 
-# ---- Routes ----
+def _error_response(request: Request, status_code: int, error: str, message: str = ""):
+    if request.url.path.startswith("/api/"):
+        return JSONResponse(status_code=status_code, content={"error": error, "message": message})
+    return templates.TemplateResponse(
+        "error.html",
+        _context(request, error=error, message=message, title=error),
+        status_code=status_code,
+    )
+
+
+def _resolve_or_error(request: Request, path: str, need_file: bool = False):
+    """Resolve path; returns (abs_path, None) or (None, response)."""
+    abs_path, err = resolve_safe_path(config["root_dir"], path)
+    if err:
+        return None, _error_response(request, 400, "路径错误", err)
+    if need_file and not os.path.isfile(abs_path):
+        return None, _error_response(request, 404, "文件不存在", f"文件不存在: {path}")
+    return abs_path, None
+
+
+# ---------------------------------------------------------------------------
+# Auth routes
+# ---------------------------------------------------------------------------
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request, error: str = ""):
-    """Show login page."""
-    # If already logged in, redirect to home
-    session = request.cookies.get(SESSION_COOKIE)
-    if session == SESSION_TOKEN:
-        return RedirectResponse(url="/", status_code=302)
+async def login_page(request: Request, next: str = "/browse/"):
+    token = request.cookies.get(SESSION_COOKIE)
+    if sessions.validate(token):
+        return RedirectResponse(url=next, status_code=302)
     return templates.TemplateResponse(
         "login.html",
-        {"request": request, "error": error}
+        {"request": request, "error": "", "next": next, "needs_auth": True},
     )
 
 
 @app.post("/api/login")
-async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    """Handle login form submission."""
-    cfg_auth = config["auth"]
-    expected_user = cfg_auth["username"]
-    expected_hash = cfg_auth["password_hash"]
+async def login(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    next: str = Form("/browse/"),
+):
+    ip = client_ip(request)
+    if rate_limiter.is_blocked(ip, username):
+        return JSONResponse(
+            status_code=429,
+            content={"error": "登录尝试过于频繁，请稍后再试"},
+        )
 
-    if username != expected_user:
-        return RedirectResponse(url="/login?error=Invalid credentials", status_code=302)
+    expected_user = config["auth"]["username"]
+    expected_hash = config["auth"]["password_hash"]
+    if username != expected_user or not verify_password(password, expected_hash):
+        rate_limiter.record_failure(ip, username)
+        return JSONResponse(status_code=401, content={"error": "用户名或密码错误"})
 
-    if not expected_hash:
-        # First login — set password to whatever was entered
-        config["auth"]["password_hash"] = hash_password(password)
-        # Persist to config file
-        _persist_password_hash(config["auth"]["password_hash"])
-    elif not verify_password(password, expected_hash):
-        return RedirectResponse(url="/login?error=Invalid credentials", status_code=302)
-
-    response = RedirectResponse(url="/", status_code=302)
+    rate_limiter.reset(ip, username)
+    token = sessions.create()
+    if not next.startswith("/") or next.startswith("//"):
+        next = "/browse/"
+    response = RedirectResponse(url=next, status_code=302)
     response.set_cookie(
         key=SESSION_COOKIE,
-        value=SESSION_TOKEN,
-        max_age=86400 * 30,  # 30 days
+        value=token,
+        max_age=config["auth"]["session_ttl_days"] * 86400,
         httponly=True,
         samesite="lax",
+        secure=config["auth"].get("cookie_secure", False),
+        path="/",
     )
     return response
 
 
 @app.get("/api/logout")
-async def logout():
-    """Log out by clearing the session cookie."""
+async def logout(request: Request):
+    sessions.destroy(request.cookies.get(SESSION_COOKIE))
     response = RedirectResponse(url="/login", status_code=302)
-    response.delete_cookie(key=SESSION_COOKIE)
+    response.delete_cookie(SESSION_COOKIE, path="/")
     return response
 
 
+@app.post("/api/set-password")
+async def set_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+):
+    if not verify_password(current_password, config["auth"]["password_hash"]):
+        return JSONResponse(status_code=403, content={"error": "当前密码不正确"})
+    if len(new_password) < 8:
+        return JSONResponse(status_code=400, content={"error": "新密码至少 8 位"})
+    from app.auth import hash_password
+
+    persist_password_hash(hash_password(new_password))
+    sessions.clear()
+    return JSONResponse(status_code=200, content={"status": "ok"})
+
+
+# ---------------------------------------------------------------------------
+# Browse routes
+# ---------------------------------------------------------------------------
+
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request, path: str = Query(""), sort: str = Query("name")):
-    """File browser home page."""
-    root_dir = config["root_dir"]
-    request_path = path or ""
+async def root(request: Request):
+    return RedirectResponse(url="/browse/", status_code=307)
 
-    if request_path:
-        abs_path, error = resolve_safe_path(root_dir, request_path)
-        if error:
-            return templates.TemplateResponse(
-                "error.html",
-                {"request": request, "error": error, "title": "Error"},
-                status_code=400,
-            )
-    else:
-        abs_path = root_dir
 
-    # Check if path exists
-    if not os.path.exists(abs_path):
-        return templates.TemplateResponse(
-            "error.html",
-            {"request": request, "error": "File or directory not found", "title": "Not Found"},
-            status_code=404,
-        )
+@app.get("/browse/", response_class=HTMLResponse)
+async def browse_root(request: Request, sort: str = Query("name")):
+    return await browse_path(request, "", sort)
+
+
+@app.get("/browse/{rel_path:path}", response_class=HTMLResponse)
+async def browse_path(request: Request, rel_path: str, sort: str = Query("name")):
+    abs_path, err_resp = _resolve_or_error(request, rel_path)
+    if err_resp is not None:
+        return err_resp
 
     if os.path.isfile(abs_path):
-        # Direct file access: handle based on type
-        ext = os.path.splitext(abs_path)[1].lower()
-        rel_path = os.path.relpath(abs_path, root_dir)
+        return RedirectResponse(url="/view/" + rel_path.lstrip("/"), status_code=302)
 
-        if ext == ".md":
-            return await _render_markdown(request, rel_path)
-        elif ext == ".pdf":
-            return await _view_pdf(request, rel_path)
-        elif ext in (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"):
-            return await _serve_file(request, rel_path)
-        else:
-            # Offer download
-            return await _serve_file(request, rel_path)
+    entries = list_directory(abs_path, config["root_dir"])
+    if entries and "error" in entries[0]:
+        return _error_response(request, 500, "目录读取失败", entries[0]["error"])
 
-    # List directory contents
-    entries = list_directory(abs_path, root_dir)
-    crumbs = _get_breadcrumbs(request_path)
-    current_dir = os.path.basename(abs_path) if request_path else "remote_works"
-
-    # Sort
-    reverse = False
-    sort_key = sort.lstrip("-")
-    if sort.startswith("-"):
-        reverse = True
-    if sort_key == "name":
-        entries.sort(key=lambda e: (not e["is_dir"], e["name"].lower()), reverse=reverse)
-    elif sort_key == "mtime":
+    reverse = sort.startswith("-")
+    key = sort.lstrip("-")
+    if key == "mtime":
         entries.sort(key=lambda e: (not e["is_dir"], e["mtime"]), reverse=reverse)
-    elif sort_key == "size":
+    elif key == "size":
         entries.sort(key=lambda e: (not e["is_dir"], e["size"]), reverse=reverse)
+    else:
+        entries.sort(key=lambda e: (not e["is_dir"], e["name"].lower()), reverse=reverse)
 
     return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
-            "entries": entries,
-            "breadcrumbs": crumbs,
-            "current_path": request_path,
-            "current_dir": current_dir,
-            "sort": sort,
-            "title": f"Files - {current_dir}",
-        }
+        "browse.html",
+        _context(
+            request,
+            entries=entries,
+            current_path=rel_path,
+            breadcrumbs=_breadcrumbs(rel_path),
+            sort=sort,
+            title="Files - Remote Works",
+        ),
     )
 
 
-@app.get("/search", response_class=HTMLResponse)
-async def search(request: Request, q: str = Query("")):
-    """Search files by name."""
-    root_dir = config["root_dir"]
-    if not q.strip():
-        return RedirectResponse(url="/", status_code=302)
+# ---------------------------------------------------------------------------
+# View routes
+# ---------------------------------------------------------------------------
 
-    results = search_files(root_dir, q.strip())
+@app.get("/view/{rel_path:path}", response_class=HTMLResponse)
+async def view_file(request: Request, rel_path: str):
+    abs_path, err_resp = _resolve_or_error(request, rel_path)
+    if err_resp is not None:
+        return err_resp
+    if os.path.isdir(abs_path):
+        return RedirectResponse(url="/browse/" + rel_path.lstrip("/") + "/", status_code=302)
+
+    info = get_file_info(abs_path, config["root_dir"])
+    if info is None:
+        return _error_response(request, 404, "文件不存在", rel_path)
+
+    ftype = info["type"]
+    if ftype == "markdown":
+        return await _markdown_page(request, rel_path)
+    if ftype == "pdf":
+        return _pdf_viewer(request, info)
+    if ftype == "image":
+        return _image_viewer(request, info)
+    if ftype in ("text", "code", "data", "web", "ros", "rosbag", "mesh", "pointcloud"):
+        return await _text_viewer(request, rel_path, info)
+    return _generic_viewer(request, info)
+
+
+@app.get("/md/{rel_path:path}", response_class=HTMLResponse)
+async def md_alias(request: Request, rel_path: str):
+    return await _markdown_page(request, rel_path)
+
+
+@app.get("/pdf/{rel_path:path}", response_class=HTMLResponse)
+async def pdf_alias(request: Request, rel_path: str):
+    abs_path, err_resp = _resolve_or_error(request, rel_path, need_file=True)
+    if err_resp is not None:
+        return err_resp
+    info = get_file_info(abs_path, config["root_dir"])
+    if info is None or info["type"] != "pdf":
+        return _error_response(request, 404, "PDF 文件不存在", rel_path)
+    return _pdf_viewer(request, info)
+
+
+def _pdf_viewer(request: Request, info: dict):
+    return templates.TemplateResponse(
+        "pdf_viewer.html",
+        _context(request, entry=info, title=f"PDF - {info['name']}"),
+    )
+
+
+def _image_viewer(request: Request, info: dict):
+    return templates.TemplateResponse(
+        "image_viewer.html",
+        _context(request, entry=info, title=f"Image - {info['name']}"),
+    )
+
+
+def _generic_viewer(request: Request, info: dict):
+    return templates.TemplateResponse(
+        "generic_file.html",
+        _context(request, entry=info, title=info["name"]),
+    )
+
+
+async def _text_viewer(request: Request, rel_path: str, info: dict):
+    abs_path, _ = _resolve_or_error(request, rel_path, need_file=True)
+    try:
+        with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read(TEXT_PREVIEW_LIMIT + 1)
+    except OSError as e:
+        return _error_response(request, 500, "文件读取失败", str(e))
+    truncated = len(content) > TEXT_PREVIEW_LIMIT
+    if truncated:
+        content = content[:TEXT_PREVIEW_LIMIT]
+    return templates.TemplateResponse(
+        "text_viewer.html",
+        _context(
+            request,
+            entry=info,
+            content=content,
+            truncated=truncated,
+            title=info["name"],
+        ),
+    )
+
+
+async def _markdown_page(request: Request, rel_path: str):
+    abs_path, err_resp = _resolve_or_error(request, rel_path, need_file=True)
+    if err_resp is not None:
+        return err_resp
+    info = get_file_info(abs_path, config["root_dir"])
+    if info is None:
+        return _error_response(request, 404, "文件不存在", rel_path)
+    if info["type"] != "markdown":
+        return _error_response(request, 400, "不是 Markdown 文件", rel_path)
+
+    try:
+        with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError as e:
+        return _error_response(request, 500, "文件读取失败", str(e))
+
+    try:
+        html_body, toc_html, has_mermaid = render_markdown(text, abs_path)
+    except Exception as e:
+        logger.exception("Markdown render failed: %s", rel_path)
+        return _error_response(request, 500, "Markdown 渲染失败", str(e))
+
+    title = info["name"]
+    import re
+
+    h1 = re.search(r"<h1[^>]*>(.*?)</h1>", html_body, flags=re.DOTALL)
+    if h1:
+        clean = re.sub(r"<[^>]+>", "", h1.group(1)).strip()
+        if clean:
+            title = clean
+
+    has_math = "$$" in text or "$" in text
+    pdf_available = get_cached_pdf(abs_path, text) is not None
+    return templates.TemplateResponse(
+        "markdown.html",
+        _context(
+            request,
+            entry=info,
+            title=title,
+            content_html=html_body,
+            toc_html=toc_html,
+            has_mermaid=has_mermaid and config["markdown"].get("mermaid", True),
+            has_math=has_math and config["markdown"].get("math", True),
+            enable_toc=config["markdown"].get("toc", True),
+            enable_math=config["markdown"].get("math", True),
+            enable_mermaid=config["markdown"].get("mermaid", True),
+            enable_highlight=config["markdown"].get("highlight", True),
+            file_path=rel_path,
+            mtime=info["mtime_str"],
+            pdf_available=pdf_available,
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# File serving
+# ---------------------------------------------------------------------------
+
+def _file_response(abs_path: str, disposition: str = "attachment") -> Response:
+    content_type, _ = mimetypes.guess_type(abs_path)
+    if content_type is None:
+        content_type = "application/octet-stream"
+    filename = os.path.basename(abs_path)
+    return FileResponse(
+        abs_path,
+        media_type=content_type,
+        filename=filename,
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{filename}"; filename*=UTF-8\'\'{quote(filename)}',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@app.get("/api/files/{rel_path:path}")
+async def serve_file(request: Request, rel_path: str):
+    abs_path, err_resp = _resolve_or_error(request, rel_path, need_file=True)
+    if err_resp is not None:
+        return err_resp
+    ext = os.path.splitext(abs_path)[1].lower()
+    disposition = "inline" if ext in (".pdf", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp") else "attachment"
+    return _file_response(abs_path, disposition)
+
+
+@app.get("/download/{rel_path:path}")
+async def download_file(request: Request, rel_path: str):
+    abs_path, err_resp = _resolve_or_error(request, rel_path, need_file=True)
+    if err_resp is not None:
+        return err_resp
+    return _file_response(abs_path, "attachment")
+
+
+@app.get("/api/download-zip/{rel_path:path}")
+async def download_directory_zip(request: Request, rel_path: str):
+    if not config["zip"].get("enabled", True):
+        return JSONResponse(status_code=501, content={"error": "ZIP 下载未启用"})
+    abs_path, err_resp = _resolve_or_error(request, rel_path)
+    if err_resp is not None:
+        return err_resp
+    if not os.path.isdir(abs_path):
+        return JSONResponse(status_code=400, content={"error": "只能打包下载目录"})
+
+    import zipfile
+
+    max_files = config["zip"].get("max_files", 5000)
+    max_bytes = config["zip"].get("max_bytes", 2 * 1024 ** 3)
+    fd, tmp_path = tempfile.mkstemp(suffix=".zip", dir=config["cache_dir"])
+    os.close(fd)
+    try:
+        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            count = 0
+            total = 0
+            root = config["root_dir"]
+            base = os.path.basename(abs_path.rstrip("/")) or "files"
+            for dirpath, dirnames, filenames in os.walk(abs_path):
+                dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+                for name in filenames:
+                    if name.startswith("."):
+                        continue
+                    full = os.path.join(dirpath, name)
+                    try:
+                        size = os.path.getsize(full)
+                    except OSError:
+                        continue
+                    if count >= max_files or total + size > max_bytes:
+                        return JSONResponse(
+                            status_code=413,
+                            content={"error": "目录过大，超出打包限制", "max_files": max_files},
+                        )
+                    arcname = os.path.join(base, os.path.relpath(full, abs_path))
+                    zf.write(full, arcname)
+                    count += 1
+                    total += size
+        return FileResponse(
+            tmp_path,
+            media_type="application/zip",
+            filename=f"{base}.zip",
+            background=BackgroundTask(_remove_file, tmp_path),
+        )
+    except Exception as e:
+        _remove_file(tmp_path)
+        logger.exception("Zip failed: %s", rel_path)
+        return JSONResponse(status_code=500, content={"error": f"打包失败: {e}"})
+
+
+def _remove_file(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Search / Recent
+# ---------------------------------------------------------------------------
+
+@app.get("/search", response_class=HTMLResponse)
+async def search_page(request: Request, q: str = Query("")):
+    q = q.strip()
+    results = search_files(config["root_dir"], q) if q else []
     return templates.TemplateResponse(
         "search.html",
-        {
-            "request": request,
-            "results": results,
-            "query": q.strip(),
-            "title": f"Search: {q}",
-        }
+        _context(request, query=q, results=results, title=f"Search: {q or 'All'}"),
     )
 
 
 @app.get("/recent", response_class=HTMLResponse)
-async def recent(request: Request):
-    """Show recently modified files."""
-    root_dir = config["root_dir"]
-    files = get_recent_files(root_dir, limit=50)
+async def recent_page(request: Request, limit: int = Query(50, le=200)):
+    files = get_recent_files(config["root_dir"], limit=limit)
     return templates.TemplateResponse(
         "recent.html",
-        {
-            "request": request,
-            "files": files,
-            "title": "Recent Files",
-        }
+        _context(request, files=files, title="Recent Files"),
     )
 
 
-# ---- File Serving ----
-
-@app.get("/api/files/{path:path}")
-async def _serve_file(request: Request, path: str):
-    """Serve a file for download or preview."""
-    root_dir = config["root_dir"]
-    abs_path, error = resolve_safe_path(root_dir, path)
-    if error:
-        raise HTTPException(status_code=400, detail=error)
-
-    if not os.path.isfile(abs_path):
-        raise HTTPException(status_code=404, detail="File not found")
-
-    # Determine content type
-    content_type, _ = mimetypes.guess_type(abs_path)
-    if content_type is None:
-        content_type = "application/octet-stream"
-
-    # For images and PDFs, allow inline preview
-    ext = os.path.splitext(abs_path)[1].lower()
-    disposition = "inline"
-    if ext not in (".pdf", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"):
-        disposition = "attachment"
-
-    filename = os.path.basename(abs_path)
-    return FileResponse(
-        abs_path,
-        media_type=content_type,
-        filename=filename,
-        headers={
-            "Content-Disposition": f'{disposition}; filename="{filename}"',
-            "Cache-Control": "no-cache",
-        },
-    )
+@app.get("/api/search")
+async def api_search(request: Request, q: str = Query(..., min_length=1)):
+    return {"results": search_files(config["root_dir"], q.strip())}
 
 
-@app.get("/api/download/{path:path}")
-async def download_file(path: str):
-    """Force download a file."""
-    root_dir = config["root_dir"]
-    abs_path, error = resolve_safe_path(root_dir, path)
-    if error:
-        raise HTTPException(status_code=400, detail=error)
-
-    if not os.path.isfile(abs_path):
-        raise HTTPException(status_code=404, detail="File not found")
-
-    content_type, _ = mimetypes.guess_type(abs_path)
-    if content_type is None:
-        content_type = "application/octet-stream"
-
-    filename = os.path.basename(abs_path)
-    return FileResponse(
-        abs_path,
-        media_type=content_type,
-        filename=filename,
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-        },
-    )
+@app.get("/api/recent")
+async def api_recent(request: Request, limit: int = Query(30, le=200)):
+    return {"files": get_recent_files(config["root_dir"], limit=limit)}
 
 
-@app.get("/api/download-zip/{path:path}")
-async def download_directory_zip(path: str):
-    """Download a directory as a ZIP file. (Placeholder for future implementation)"""
-    return JSONResponse(
-        status_code=501,
-        content={"error": "Directory ZIP download not yet implemented"}
-    )
+# ---------------------------------------------------------------------------
+# PDF generation
+# ---------------------------------------------------------------------------
 
-
-# ---- Markdown Routes ----
-
-@app.get("/api/render-md/{path:path}")
-async def api_render_markdown(path: str):
-    """API endpoint that returns rendered HTML for a markdown file."""
-    root_dir = config["root_dir"]
-    abs_path, error = resolve_safe_path(root_dir, path)
-    if error:
-        raise HTTPException(status_code=400, detail=error)
-
-    if not os.path.isfile(abs_path) or not abs_path.endswith(".md"):
-        raise HTTPException(status_code=404, detail="Markdown file not found")
+async def _generate_pdf_response(request: Request, rel_path: str, force: bool = False):
+    abs_path, err_resp = _resolve_or_error(request, rel_path, need_file=True)
+    if err_resp is not None:
+        return err_resp
+    info = get_file_info(abs_path, config["root_dir"])
+    if info is None or info["type"] != "markdown":
+        return JSONResponse(status_code=400, content={"error": "仅支持 Markdown 文件导出 PDF"})
 
     try:
         with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
             text = f.read()
-        html_body, toc, has_mermaid = render_markdown(text, abs_path)
-        return {"html": html_body, "toc": toc, "has_mermaid": has_mermaid}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Render error: {str(e)}")
+    except OSError as e:
+        return JSONResponse(status_code=500, content={"error": f"读取文件失败: {e}"})
 
-
-@app.get("/md/{path:path}", response_class=HTMLResponse)
-async def _render_markdown(request: Request, path: str):
-    """Render a Markdown file as a full HTML page."""
-    root_dir = config["root_dir"]
-    abs_path, error = resolve_safe_path(root_dir, path)
-    if error:
-        return templates.TemplateResponse(
-            "error.html",
-            {"request": request, "error": error, "title": "Error"},
-            status_code=400,
-        )
-
-    if not os.path.isfile(abs_path) or not abs_path.endswith(".md"):
-        return templates.TemplateResponse(
-            "error.html",
-            {"request": request, "error": "Markdown file not found", "title": "Not Found"},
-            status_code=404,
-        )
+    if force:
+        invalidate_pdf_cache(abs_path, text)
 
     try:
-        with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
-            text = f.read()
-
-        html_body, toc_html, has_mermaid = render_markdown(text, abs_path)
-        has_math = "$" in text or "$$" in text
-        title = os.path.basename(abs_path)
-        # Extract first h1 for title
-        import re
-        h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', html_body)
-        if h1_match:
-            title = re.sub(r'<[^>]+>', '', h1_match.group(1))
-
-        # Get file mtime for display
-        st = os.stat(abs_path)
-        mtime_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime))
-
-        # Check if PDF is cached
-        pdf_available = get_cached_pdf(abs_path, text) is not None
-
-        return templates.TemplateResponse(
-            "markdown.html",
-            {
-                "request": request,
-                "title": title,
-                "html_body": html_body,
-                "toc": toc_html,
-                "has_mermaid": has_mermaid,
-                "has_math": has_math and config["markdown"]["math"],
-                "file_path": path,
-                "mtime": mtime_str,
-                "pdf_available": pdf_available,
-            }
-        )
-    except Exception as e:
-        return templates.TemplateResponse(
-            "error.html",
-            {"request": request, "error": f"Markdown rendering error: {str(e)}", "title": "Render Error"},
-            status_code=500,
-        )
-
-
-@app.post("/api/md-to-pdf/{path:path}")
-async def markdown_to_pdf(path: str):
-    """Convert a Markdown file to PDF and return the file."""
-    root_dir = config["root_dir"]
-    abs_path, error = resolve_safe_path(root_dir, path)
-    if error:
-        raise HTTPException(status_code=400, detail=error)
-
-    if not os.path.isfile(abs_path) or not abs_path.endswith(".md"):
-        raise HTTPException(status_code=404, detail="Markdown file not found")
-
-    try:
-        with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
-            text = f.read()
-
-        # Check cache first
-        cached = get_cached_pdf(abs_path, text)
-        if cached:
-            filename = os.path.splitext(os.path.basename(abs_path))[0] + ".pdf"
-            return FileResponse(
-                cached,
-                media_type="application/pdf",
-                filename=filename,
-                headers={"Content-Disposition": f'inline; filename="{filename}"'},
-            )
-
-        # Render markdown
         html_body, _, has_mermaid = render_markdown(text, abs_path)
-        has_math = "$" in text or "$$" in text
-        title = os.path.basename(abs_path)
-
-        # Build full HTML for PDF
-        full_html = build_pdf_html(html_body, title, has_mermaid, has_math)
-
-        # Generate PDF
+        has_math = "$$" in text or "$" in text
+        full_html = build_pdf_html(html_body, info["name"], has_mermaid, has_math)
         pdf_path = await generate_pdf(abs_path, text, html_body, full_html)
-        if pdf_path is None or not os.path.exists(pdf_path):
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "error": "PDF generation failed. Check that Chromium is installed.",
-                    "hint": "Run: playwright install chromium",
-                },
-            )
-
-        # Update cache tracking
-        import hashlib
-        key = hashlib.sha256(abs_path.encode("utf-8") + text.encode("utf-8")).hexdigest()[:32]
-        st = os.stat(abs_path)
-        cache_utils.mark_cache(key, os.path.relpath(abs_path, root_dir), "pdf", st.st_mtime, os.path.getsize(pdf_path))
-
-        filename = os.path.splitext(os.path.basename(abs_path))[0] + ".pdf"
-        return FileResponse(
-            pdf_path,
-            media_type="application/pdf",
-            filename=filename,
-            headers={"Content-Disposition": f'inline; filename="{filename}"'},
-        )
-
     except Exception as e:
+        logger.exception("PDF generation failed: %s", rel_path)
+        return JSONResponse(status_code=500, content={"error": f"PDF 生成失败: {e}"})
+
+    if pdf_path is None:
         return JSONResponse(
             status_code=500,
-            content={"error": f"PDF generation error: {str(e)}"},
+            content={
+                "error": "PDF 生成失败：Chromium 不可用或渲染超时",
+                "hint": "请检查服务端 Playwright Chromium 安装：python3 -m playwright install chromium",
+            },
         )
 
-
-# ---- PDF Viewing ----
-
-@app.get("/pdf/{path:path}", response_class=HTMLResponse)
-async def _view_pdf(request: Request, path: str):
-    """View a PDF file in the browser."""
-    root_dir = config["root_dir"]
-    abs_path, error = resolve_safe_path(root_dir, path)
-    if error:
-        return templates.TemplateResponse(
-            "error.html",
-            {"request": request, "error": error, "title": "Error"},
-            status_code=400,
-        )
-
-    if not os.path.isfile(abs_path) or not abs_path.endswith(".pdf"):
-        return templates.TemplateResponse(
-            "error.html",
-            {"request": request, "error": "PDF file not found", "title": "Not Found"},
-            status_code=404,
-        )
-
-    filename = os.path.basename(abs_path)
-    return templates.TemplateResponse(
-        "pdf_view.html",
-        {
-            "request": request,
-            "file_path": path,
-            "filename": filename,
-            "title": f"PDF - {filename}",
-        }
+    filename = os.path.splitext(info["name"])[0] + ".pdf"
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=filename,
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"; filename*=UTF-8\'\'{quote(filename)}',
+            "Cache-Control": "no-store",
+        },
     )
 
 
-# ---- Config API (for first-time setup) ----
+@app.post("/api/pdf/{rel_path:path}/regenerate")
+async def pdf_regenerate(request: Request, rel_path: str):
+    return await _generate_pdf_response(request, rel_path, force=True)
+
+
+@app.get("/api/pdf/{rel_path:path}")
+async def pdf_get(request: Request, rel_path: str):
+    return await _generate_pdf_response(request, rel_path, force=False)
+
+
+@app.post("/api/pdf/{rel_path:path}")
+async def pdf_post(request: Request, rel_path: str):
+    return await _generate_pdf_response(request, rel_path, force=False)
+
+
+# ---------------------------------------------------------------------------
+# Status / health
+# ---------------------------------------------------------------------------
+
+@app.get("/api/health")
+async def health():
+    root = config["root_dir"]
+    return {
+        "status": "ok",
+        "version": "2.0.0",
+        "uptime_seconds": int(time.time() - STARTED_AT),
+        "root_exists": os.path.isdir(root),
+    }
+
 
 @app.get("/api/status")
 async def status():
-    """Return server status."""
-    from app.file_browser import list_directory
-    root_dir = config["root_dir"]
-    exists = os.path.isdir(root_dir)
-    stats = {"root_dir": root_dir, "exists": exists}
-    if exists:
-        entries = list_directory(root_dir, root_dir)
-        stats["file_count"] = len([e for e in entries if not e.get("error")])
-    return stats
+    root = config["root_dir"]
+    info = {"root_dir": root, "exists": os.path.isdir(root)}
+    if os.path.isdir(root):
+        entries = list_directory(root, root)
+        info["top_level_count"] = len(entries)
+    pdf_dir = os.path.join(config["cache_dir"], "pdf")
+    info["cached_pdf_count"] = len(os.listdir(pdf_dir)) if os.path.isdir(pdf_dir) else 0
+    return info
 
 
-@app.post("/api/set-password")
-async def set_password(current_password: str = Form(...), new_password: str = Form(...)):
-    """Change the login password."""
-    cfg_auth = config["auth"]
-    if not verify_password(current_password, cfg_auth["password_hash"]):
-        raise HTTPException(status_code=403, detail="Current password is incorrect")
+# ---------------------------------------------------------------------------
+# Error handlers
+# ---------------------------------------------------------------------------
 
-    new_hash = hash_password(new_password)
-    config["auth"]["password_hash"] = new_hash
-    _persist_password_hash(new_hash)
-    return {"status": "ok", "message": "Password updated successfully"}
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return _error_response(request, exc.status_code, "请求错误", str(exc.detail))
 
 
-def _persist_password_hash(password_hash: str):
-    """Persist the password hash to the config file."""
-    import yaml
-    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.yaml")
-    if os.path.exists(config_path):
-        with open(config_path, "r") as f:
-            cfg = yaml.safe_load(f) or {}
-        if "auth" not in cfg:
-            cfg["auth"] = {}
-        cfg["auth"]["password_hash"] = password_hash
-        with open(config_path, "w") as f:
-            yaml.dump(cfg, f, default_flow_style=False)
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled error on %s", request.url.path)
+    return _error_response(request, 500, "服务器内部错误", str(exc))
 
 
-# ---- Entry Point ----
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
-def run():
-    """Run the application with uvicorn."""
+def run() -> None:
     import uvicorn
+
     uvicorn.run(
         "app.main:app",
         host=config["host"],

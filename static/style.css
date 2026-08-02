@@ -656,3 +656,97 @@ mjx-container {
   overflow-y: hidden;
   max-width: 100%;
 }
+
+/* === TOC panel === */
+.toc-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 12px 0;
+  padding: 10px 14px;
+  box-shadow: var(--shadow);
+}
+
+.toc-panel summary {
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.toc-nav {
+  margin-top: 10px;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.toc-nav ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.toc-nav li {
+  padding: 3px 0;
+  font-size: 0.9rem;
+}
+
+.toc-nav li.toc-l3 {
+  padding-left: 16px;
+}
+
+.toc-nav a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.toc-nav a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* === Sort links & zip === */
+.sort-links {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.sort-links a {
+  margin: 0 4px;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.sort-links a.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.zip-link {
+  color: var(--success);
+}
+
+.file-item.dir .actions a {
+  color: var(--success);
+}
+
+/* === Empty / warning === */
+.empty {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 32px 0;
+}
+
+.meta.warning {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+/* Search/recent file links */
+.file-item .name a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.file-item .name a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}

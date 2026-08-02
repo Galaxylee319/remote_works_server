@@ -10,17 +10,18 @@
 </nav>
 
 <div class="action-bar">
-  <a href="/browse/">Back to Files</a>
-  <a href="{{ image_url }}" download>Download Image</a>
+  <a href="/browse/">返回</a>
+  <a href="/download/{{ entry.path }}" download>下载图片</a>
 </div>
 
 <div class="image-viewer">
-  <img src="{{ image_url }}" alt="{{ entry.name }}">
+  <img src="/api/files/{{ entry.path }}" alt="{{ entry.name }}">
 </div>
 
 <div class="action-bar" style="margin-top:12px;">
-  <span class="meta">{{ entry.size_str }} &middot; {{ entry.mtime }}</span>
-  <a href="{{ image_url }}" download>Download</a>
+  <span class="meta">{{ entry.size_str }} &middot; {{ entry.mtime_str }}</span>
+  <a href="/download/{{ entry.path }}" download>下载</a>
 </div>
 
 {% endblock %}
+

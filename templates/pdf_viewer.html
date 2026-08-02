@@ -10,22 +10,23 @@
 </nav>
 
 <div class="action-bar">
-  <a href="/browse/">Back to Files</a>
-  <a href="{{ pdf_url }}" download>Download PDF</a>
+  <a href="/browse/">返回</a>
+  <a href="/download/{{ entry.path }}" download>下载 PDF</a>
 </div>
 
 <div class="pdf-viewer-container">
-  <iframe src="{{ pdf_url }}#toolbar=0&navpanes=0" title="{{ entry.name }}">
+  <iframe src="/api/files/{{ entry.path }}#toolbar=0&navpanes=0" title="{{ entry.name }}">
     <div class="pdf-fallback">
-      <p>Your browser does not support embedded PDF viewing.</p>
-      <a href="{{ pdf_url }}" download class="download-btn">Download PDF</a>
+      <p>浏览器不支持内嵌 PDF 预览，请直接下载。</p>
+      <a href="/download/{{ entry.path }}" download class="download-btn">下载 PDF</a>
     </div>
   </iframe>
 </div>
 
 <div class="action-bar" style="margin-top:12px;">
-  <span class="meta">{{ entry.size_str }} &middot; {{ entry.mtime }}</span>
-  <a href="{{ pdf_url }}" download>Download</a>
+  <span class="meta">{{ entry.size_str }} &middot; {{ entry.mtime_str }}</span>
+  <a href="/download/{{ entry.path }}" download>下载</a>
 </div>
 
 {% endblock %}
+
