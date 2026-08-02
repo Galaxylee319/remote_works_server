@@ -105,11 +105,13 @@ def _protect_math(text: str) -> Tuple[str, list, list]:
 def _restore_math(html_body: str, block_math: list, inline_math: list) -> str:
     for i, formula in enumerate(block_math):
         placeholder = "%%MATHBLOCK%d%%" % i
-        replacement = '<div class="math-block">\\[%s\\]</div>' % formula
+        safe_formula = html.escape(formula, quote=False)
+        replacement = '<div class="math-block">\\[%s\\]</div>' % safe_formula
         html_body = html_body.replace(placeholder, replacement)
     for i, formula in enumerate(inline_math):
         placeholder = "%%MATHINLINE%d%%" % i
-        replacement = '<span class="math-inline">\\(%s\\)</span>' % formula
+        safe_formula = html.escape(formula, quote=False)
+        replacement = '<span class="math-inline">\\(%s\\)</span>' % safe_formula
         html_body = html_body.replace(placeholder, replacement)
     return html_body
 
@@ -118,18 +120,28 @@ def _fix_images(html_body: str, md_dir: str) -> str:
     """Rewrite relative image src to /api/files/<rel> inside the served root."""
     root_dir = config["root_dir"]
 
+    def _candidate_rel(src: str):
+        """Try md-relative, then root-relative (strip ../), return rel or None."""
+        for candidate in (
+            os.path.normpath(os.path.join(md_dir, src)),
+            os.path.normpath(os.path.join(root_dir, re.sub(r"^(\.\./)+", "", src))),
+        ):
+            try:
+                rel = os.path.relpath(candidate, root_dir)
+            except ValueError:
+                continue
+            if rel.startswith("..") or os.path.isabs(rel):
+                continue
+            if os.path.exists(candidate):
+                return rel
+        return None
+
     def _fix(m):
         src = m.group(1)
         if src.startswith(("http://", "https://", "/", "data:", "#", "file:")):
             return m.group(0)
-        candidate = os.path.normpath(os.path.join(md_dir, src))
-        try:
-            rel = os.path.relpath(candidate, root_dir)
-        except ValueError:
-            return m.group(0)
-        if rel.startswith("..") or rel.startswith("/"):
-            return m.group(0)
-        if not os.path.exists(candidate):
+        rel = _candidate_rel(src)
+        if rel is None:
             return m.group(0)
         return '<img src="/api/files/%s"' % quote(rel)
 

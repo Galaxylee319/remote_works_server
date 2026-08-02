@@ -7,6 +7,7 @@ import html as html_module
 import os
 import re
 from typing import Optional
+from urllib.parse import unquote
 
 from app.config import config
 
@@ -15,11 +16,15 @@ _browser = None
 _playwright = None
 _browser_lock: Optional[asyncio.Lock] = None
 
+# Bump when the rendered HTML pipeline changes so stale PDF caches invalidate.
+RENDER_VERSION = "4"
+
 
 def _cache_key(file_path: str, text: str) -> str:
     h = hashlib.sha256()
     h.update(file_path.encode("utf-8"))
     h.update(text.encode("utf-8"))
+    h.update(RENDER_VERSION.encode("utf-8"))
     return h.hexdigest()[:32]
 
 
@@ -89,7 +94,7 @@ def _localize_image_urls(full_html: str) -> str:
     root_dir = config["root_dir"]
 
     def _fix(m):
-        rel = m.group(1)
+        rel = unquote(m.group(1))
         candidate = os.path.realpath(os.path.join(root_dir, rel.lstrip("/")))
         root_real = os.path.realpath(root_dir)
         if candidate != root_real and not candidate.startswith(root_real + os.sep):
@@ -116,8 +121,8 @@ def build_pdf_html(html_body: str, title: str, with_mermaid: bool, with_math: bo
         <script>
         window.MathJax = {
           tex: {
-            inlineMath: [['$','$'], ['\\(','\\)']],
-            displayMath: [['$$','$$'], ['\\[','\\]']],
+            inlineMath: [['$','$'], ['\\\\(', '\\\\)']],
+            displayMath: [['$$','$$'], ['\\\\[', '\\\\]']],
             processEscapes: true
           },
           svg: { fontCache: 'global' }
@@ -185,11 +190,19 @@ async def generate_pdf(
     os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
     full_html = _localize_image_urls(full_html)
 
+    import tempfile
+
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".html", prefix="rws_pdf_", dir=config["cache_dir"])
+    with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+        f.write(full_html)
+
     try:
         browser = await _get_browser()
         page = await browser.new_page()
         try:
-            await page.set_content(full_html, wait_until="load", timeout=60000)
+            # Normal file:// navigation, NOT set_content(): MathJax must scan a
+            # fully-parsed DOM or it only renders whatever existed mid-write.
+            await page.goto("file://" + tmp_path, wait_until="load", timeout=60000)
 
             if 'class="mermaid"' in full_html:
                 try:
@@ -204,15 +217,40 @@ async def generate_pdf(
                     pass
 
             if "math-inline" in full_html or "math-block" in full_html:
+                # 1) Wait until MathJax is loaded.
                 try:
                     await page.wait_for_function(
-                        "() => typeof MathJax === 'undefined' || "
-                        "document.querySelectorAll('mjx-container').length > 0 || "
-                        "document.querySelectorAll('.math-block, .math-inline').length === 0",
-                        timeout=20000,
+                        "() => typeof MathJax !== 'undefined' && "
+                        "MathJax.startup && MathJax.typesetPromise",
+                        timeout=60000,
                     )
                 except Exception:
                     pass
+                # 2) Wait for startup, then explicitly typeset everything and
+                #    set a completion flag (avoid promise predicates).
+                try:
+                    await page.evaluate(
+                        """() => MathJax.startup.promise.then(() =>
+                          MathJax.typesetPromise()
+                        ).then(() => {
+                          window.__rwsMathDone = true;
+                        })"""
+                    )
+                    await page.wait_for_function(
+                        "() => window.__rwsMathDone === true",
+                        timeout=120000,
+                    )
+                except Exception:
+                    pass
+
+            try:
+                await page.wait_for_function(
+                    "() => Array.from(document.querySelectorAll('img'))"
+                    ".every(i => i.complete && i.naturalWidth > 0)",
+                    timeout=30000,
+                )
+            except Exception:
+                pass
 
             await page.pdf(
                 path=pdf_path,
@@ -223,8 +261,16 @@ async def generate_pdf(
             )
         finally:
             await page.close()
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
     except Exception as e:
         print(f"[PDF ERROR] {e}")
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
         try:
             if os.path.exists(pdf_path):
                 os.remove(pdf_path)
@@ -233,4 +279,3 @@ async def generate_pdf(
         return None
 
     return pdf_path if os.path.exists(pdf_path) else None
-
