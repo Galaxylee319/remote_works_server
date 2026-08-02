@@ -18,7 +18,7 @@ from app.config import config
 SESSION_COOKIE = "rws_session"
 
 # Paths that never require authentication.
-PUBLIC_PREFIXES = ("/login", "/static", "/favicon.ico", "/api/health")
+PUBLIC_PREFIXES = ("/login", "/api/login", "/static", "/favicon.ico", "/api/health")
 
 
 def hash_password(password: str) -> str:

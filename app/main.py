@@ -417,12 +417,15 @@ def _file_response(abs_path: str, disposition: str = "attachment") -> Response:
     if content_type is None:
         content_type = "application/octet-stream"
     filename = os.path.basename(abs_path)
+    ascii_name = filename.encode("ascii", "replace").decode("ascii")
     return FileResponse(
         abs_path,
         media_type=content_type,
         filename=filename,
         headers={
-            "Content-Disposition": f'{disposition}; filename="{filename}"; filename*=UTF-8\'\'{quote(filename)}',
+            "Content-Disposition": (
+                f'{disposition}; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(filename)}'
+            ),
             "Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff",
         },
@@ -580,12 +583,15 @@ async def _generate_pdf_response(request: Request, rel_path: str, force: bool = 
         )
 
     filename = os.path.splitext(info["name"])[0] + ".pdf"
+    ascii_name = filename.encode("ascii", "replace").decode("ascii")
     return FileResponse(
         pdf_path,
         media_type="application/pdf",
         filename=filename,
         headers={
-            "Content-Disposition": f'inline; filename="{filename}"; filename*=UTF-8\'\'{quote(filename)}',
+            "Content-Disposition": (
+                f'inline; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(filename)}'
+            ),
             "Cache-Control": "no-store",
         },
     )
