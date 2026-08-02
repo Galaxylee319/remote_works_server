@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="breadcrumbs">
+  <a href="/">🏠 Home</a>
+  <span class="sep">›</span>
+  {% set parts = file_path.split('/') %}
+  {% for i in range(parts|length - 1) %}
+    <a href="/?path={{ '/'.join(parts[:i+1]) }}">{{ parts[i] }}</a>
+    <span class="sep">›</span>
+  {% endfor %}
+  <span>{{ filename }}</span>
+</div>
+
+<div class="action-bar" style="display:flex; gap:8px; flex-wrap:wrap; padding:12px 0; border-bottom:1px solid var(--border); align-items:center;">
+  <a href="/?path={{ '/'.join(parts[:-1]) if parts|length > 1 else '' }}" class="btn">← Back</a>
+  <a href="/api/download/{{ file_path }}" class="btn">⬇️ Download PDF</a>
+</div>
+
+<div style="width:100%; height:85vh; margin-top:12px; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;">
+  <iframe src="/api/files/{{ file_path }}" style="width:100%; height:100%; border:none;" allowfullscreen></iframe>
+</div>
+{% endblock %}

@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}{{ current_path or "Files" }} - Remote Works{% endblock %}
+
+{% block content %}
+
+<!-- Breadcrumbs -->
+<nav class="breadcrumbs">
+  {% for crumb in breadcrumbs %}
+    {% if not loop.last %}
+      <a href="{{ crumb.path }}">{{ crumb.name }}</a>
+      <span class="sep">/</span>
+    {% else %}
+      <span>{{ crumb.name }}</span>
+    {% endif %}
+  {% endfor %}
+</nav>
+
+<!-- Search -->
+<form class="search-bar" action="/api/search" method="get" onsubmit="searchFiles(event)">
+  <input type="text" name="q" id="search-input" placeholder="Search files..." autocomplete="off">
+  <button type="submit">Search</button>
+</form>
+
+<div id="search-results" style="display:none;"></div>
+
+<!-- Action Bar -->
+<div class="action-bar">
+  <a href="/api/recent">Recently Updated</a>
+  <a href="javascript:location.reload()">Refresh</a>
+</div>
+
+<!-- File List -->
+<div class="file-list" id="file-list">
+  {% if entries %}
+    {% for entry in entries %}
+      {% if entry.is_dir %}
+        <a class="file-item dir" href="/browse/{{ entry.path }}">
+          <span class="icon">&#128193;</span>
+          <div class="info">
+            <div class="name">{{ entry.name }}/</div>
+            <div class="meta">{{ entry.mtime }}</div>
+          </div>
+          <div class="actions">
+            <span class="type-badge">folder</span>
+          </div>
+        </a>
+      {% elif entry.type == "markdown" %}
+        <div class="file-item">
+          <span class="icon">&#128196;</span>
+          <div class="info">
+            <div class="name">{{ entry.name }}</div>
+            <div class="meta">{{ entry.size_str }} &middot; {{ entry.mtime }}</div>
+          </div>
+          <div class="actions">
+            <a href="/view/{{ entry.path }}">View</a>
+            <a href="/download/{{ entry.path }}" download>Download</a>
+          </div>
+        </div>
+      {% elif entry.type == "pdf" %}
+        <div class="file-item">
+          <span class="icon">&#128214;</span>
+          <div class="info">
+            <div class="name">{{ entry.name }}</div>
+            <div class="meta">{{ entry.size_str }} &middot; {{ entry.mtime }}</div>
+          </div>
+          <div class="actions">
+            <a href="/view/{{ entry.path }}">View</a>
+            <a href="/download/{{ entry.path }}" download>Download</a>
+          </div>
+        </div>
+      {% elif entry.type == "image" %}
+        <div class="file-item">
+          <span class="icon">&#128247;</span>
+          <div class="info">
+            <div class="name">{{ entry.name }}</div>
+            <div class="meta">{{ entry.size_str }} &middot; {{ entry.mtime }}</div>
+          </div>
+          <div class="actions">
+            <a href="/view/{{ entry.path }}">View</a>
+            <a href="/download/{{ entry.path }}" download>Download</a>
+          </div>
+        </div>
+      {% else %}
+        <div class="file-item">
+          <span class="icon">&#128206;</span>
+          <div class="info">
+            <div class="name">{{ entry.name }}</div>
+            <div class="meta">{{ entry.size_str }} &middot; {{ entry.mtime }}</div>
+          </div>
+          <div class="actions">
+            {% if entry.type in ("text", "code", "data") %}
+            <a href="/view/{{ entry.path }}">View</a>
+            {% endif %}
+            <a href="/download/{{ entry.path }}" download>Download</a>
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">
+      <div class="icon">&#128194;</div>
+      <p>This directory is empty</p>
+    </div>
+  {% endif %}
+</div>
+
+<script>
+async function searchFiles(e) {
+  e.preventDefault();
+  const q = document.getElementById('search-input').value.trim();
+  if (!q) return;
+
+  const resultsDiv = document.getElementById('search-results');
+  const fileList = document.getElementById('file-list');
+
+  try {
+    const resp = await fetch('/api/search?q=' + encodeURIComponent(q));
+    const data = await resp.json();
+
+    if (data.results.length === 0) {
+      resultsDiv.innerHTML = '<div class="empty-state"><p>No files found matching "' + q + '"</p></div>';
+      resultsDiv.style.display = 'block';
+      return;
+    }
+
+    let html = '<div class="section-title">Search results for "' + q + '"</div><div class="file-list">';
+    for (const entry of data.results) {
+      const icons = {
+        directory: '&#128193;', markdown: '&#128196;', pdf: '&#128214;',
+        image: '&#128247;', text: '&#128206;', code: '&#128206;',
+        data: '&#128206;', default: '&#128206;'
+      };
+      const icon = icons[entry.type] || icons.default;
+      const viewUrl = entry.is_dir ? '/browse/' + entry.path : '/view/' + entry.path;
+
+      html += '<div class="file-item">';
+      html += '<span class="icon">' + icon + '</span>';
+      html += '<div class="info">';
+      html += '<div class="name">' + entry.name + (entry.is_dir ? '/' : '') + '</div>';
+      html += '<div class="meta">' + entry.size_str + ' &middot; ' + entry.mtime + '</div>';
+      html += '</div>';
+      html += '<div class="actions">';
+      html += '<a href="' + viewUrl + '">' + (entry.is_dir ? 'Open' : 'View') + '</a>';
+      if (!entry.is_dir) {
+        html += '<a href="/download/' + entry.path + '" download>Download</a>';
+      }
+      html += '</div></div>';
+    }
+    html += '</div>';
+
+    resultsDiv.innerHTML = html;
+    resultsDiv.style.display = 'block';
+  } catch (err) {
+    resultsDiv.innerHTML = '<div class="empty-state"><p>Search failed</p></div>';
+    resultsDiv.style.display = 'block';
+  }
+}
+</script>
+
+{% endblock %}

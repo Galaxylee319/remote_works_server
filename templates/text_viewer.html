@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ entry.name }} - Remote Works{% endblock %}
+
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/browse/">Home</a>
+  <span class="sep">/</span>
+  <span>{{ entry.name }}</span>
+</nav>
+
+<div class="action-bar">
+  <a href="/browse/">Back to Files</a>
+  <a href="/download/{{ entry.path }}" download>Download</a>
+</div>
+
+<div style="margin-bottom:8px;">
+  <span class="meta">{{ entry.size_str }} &middot; {{ entry.mtime }} &middot; {{ entry.extension }}</span>
+</div>
+
+<pre class="text-viewer">{{ content }}</pre>
+
+{% endblock %}

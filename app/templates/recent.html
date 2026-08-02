@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="breadcrumbs">
+  <a href="/">🏠 Home</a>
+  <span class="sep">›</span>
+  <span>Recent Files</span>
+</div>
+
+<h2 style="margin:12px 0; font-size:1.2em;">🕐 Recently Modified Files</h2>
+
+{% if files %}
+  <ul class="file-list">
+    {% for entry in files %}
+    <li class="file-item">
+      <div class="icon">
+        {% if entry.ext == '.md' %}📝{% elif entry.ext == '.pdf' %}📄{% elif entry.ext in ('.png','.jpg','.jpeg','.gif','.svg','.webp') %}🖼️{% else %}📎{% endif %}
+      </div>
+      <div class="info">
+        {% if entry.ext == '.md' %}
+          <span class="name"><a href="/md/{{ entry.path }}">{{ entry.name }}</a></span>
+        {% elif entry.ext == '.pdf' %}
+          <span class="name"><a href="/pdf/{{ entry.path }}">{{ entry.name }}</a></span>
+        {% elif entry.ext in ('.png','.jpg','.jpeg','.gif','.svg','.webp') %}
+          <span class="name"><a href="/api/files/{{ entry.path }}" target="_blank">{{ entry.name }}</a></span>
+        {% else %}
+          <span class="name"><a href="/api/files/{{ entry.path }}">{{ entry.name }}</a></span>
+        {% endif %}
+        <div class="meta">
+          <span>{{ entry.path }}</span>
+          <span>{{ entry.size_hr }}</span>
+          <span>{{ entry.mtime_hr }}</span>
+        </div>
+      </div>
+      <div class="actions">
+        {% if entry.ext == '.md' %}
+          <a href="/md/{{ entry.path }}">👁️ View</a>
+        {% elif entry.ext == '.pdf' %}
+          <a href="/pdf/{{ entry.path }}">👁️ View</a>
+        {% endif %}
+        <a href="/api/download/{{ entry.path }}">⬇️ Download</a>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <div class="empty-state">
+    <div class="icon">🕐</div>
+    <h3>No files found</h3>
+  </div>
+{% endif %}
+{% endblock %}

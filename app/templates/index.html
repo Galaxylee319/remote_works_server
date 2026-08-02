@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="breadcrumbs">
+  {% for crumb in breadcrumbs %}
+    {% if loop.last %}
+      <span>{{ crumb.name }}</span>
+    {% else %}
+      <a href="{{ crumb.path }}">{{ crumb.name }}</a>
+      <span class="sep">›</span>
+    {% endif %}
+  {% endfor %}
+</div>
+
+<form class="search-bar" action="/search" method="GET">
+  <input type="text" name="q" placeholder="Search files by name..." value="">
+  <button type="submit">🔍 Search</button>
+</form>
+
+<div class="quick-links">
+  <a href="/recent">🕐 Recent files</a>
+  {% if current_path %}
+    <a href="/">🏠 Back to home</a>
+  {% endif %}
+</div>
+
+{% if current_path %}
+<div class="sort-controls">
+  <span>Sort:</span>
+  <a href="/?path={{ current_path }}&sort=name" class="{% if sort == 'name' %}active{% endif %}">Name</a>
+  <a href="/?path={{ current_path }}&sort=-mtime" class="{% if sort == '-mtime' %}active{% endif %}">Newest</a>
+  <a href="/?path={{ current_path }}&sort=mtime" class="{% if sort == 'mtime' %}active{% endif %}">Oldest</a>
+  <a href="/?path={{ current_path }}&sort=-size" class="{% if sort == '-size' %}active{% endif %}">Size ↓</a>
+</div>
+{% endif %}
+
+{% if entries and entries[0].error %}
+  <div class="empty-state">
+    <div class="icon">⚠️</div>
+    <p>{{ entries[0].error }}</p>
+  </div>
+{% elif entries %}
+  <ul class="file-list">
+    {% for entry in entries %}
+    <li class="file-item">
+      <div class="icon">
+        {% if entry.is_dir %}
+          📁
+        {% elif entry.ext == '.md' %}
+          📝
+        {% elif entry.ext == '.pdf' %}
+          📄
+        {% elif entry.ext in ('.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp') %}
+          🖼️
+        {% elif entry.ext in ('.zip', '.tar', '.gz') %}
+          📦
+        {% elif entry.ext == '.csv' %}
+          📊
+        {% else %}
+          📎
+        {% endif %}
+      </div>
+      <div class="info">
+        {% if entry.is_dir %}
+          <span class="name"><a href="/?path={{ entry.path }}">{{ entry.name }}/</a></span>
+        {% elif entry.ext == '.md' %}
+          <span class="name"><a href="/md/{{ entry.path }}">{{ entry.name }}</a></span>
+        {% elif entry.ext == '.pdf' %}
+          <span class="name"><a href="/pdf/{{ entry.path }}">{{ entry.name }}</a></span>
+        {% elif entry.ext in ('.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp') %}
+          <span class="name"><a href="/api/files/{{ entry.path }}" target="_blank">{{ entry.name }}</a></span>
+        {% else %}
+          <span class="name"><a href="/api/files/{{ entry.path }}">{{ entry.name }}</a></span>
+        {% endif %}
+        <div class="meta">
+          <span>{{ entry.type_label }}</span>
+          <span>{{ entry.size_hr }}</span>
+          <span>{{ entry.mtime_hr }}</span>
+        </div>
+      </div>
+      <div class="actions">
+        {% if entry.preview %}
+          {% if entry.ext == '.md' %}
+            <a href="/md/{{ entry.path }}">👁️ View</a>
+          {% elif entry.ext == '.pdf' %}
+            <a href="/pdf/{{ entry.path }}">👁️ View</a>
+          {% else %}
+            <a href="/api/files/{{ entry.path }}" target="_blank">👁️ Preview</a>
+          {% endif %}
+        {% endif %}
+        <a href="/api/download/{{ entry.path }}">⬇️ Download</a>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <div class="empty-state">
+    <div class="icon">📂</div>
+    <h3>This directory is empty</h3>
+    {% if not current_path %}
+    <p>Your <code>~/remote_works/</code> directory doesn't have any files yet.</p>
+    <p>Place files here to see them in this browser.</p>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

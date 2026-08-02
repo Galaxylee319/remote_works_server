@@ -1,0 +1,14 @@
+# ---- Python ----
+venv/
+__pycache__/
+*.pyc
+
+# ---- 运行时数据 ----
+.cache/
+*.log
+
+# ---- 系统 / 编辑器 ----
+.DS_Store
+*.swp
+*~
+

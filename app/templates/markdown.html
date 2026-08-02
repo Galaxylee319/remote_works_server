@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block extra_head %}
+<style>
+  /* Markdown content styling */
+  .md-content {
+    max-width: 100%;
+    overflow-x: hidden;
+    padding: 16px 0;
+  }
+  .md-content h1 { font-size: 1.5em; margin: 1em 0 0.5em; }
+  .md-content h2 { font-size: 1.25em; margin: 1em 0 0.5em; padding-bottom: 0.3em; border-bottom: 1px solid var(--border); }
+  .md-content h3 { font-size: 1.1em; margin: 0.8em 0 0.4em; }
+  .md-content p { margin: 0.6em 0; line-height: 1.7; }
+  .md-content code {
+    background: var(--bg-secondary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 0.88em;
+  }
+  .md-content pre {
+    background: var(--bg-secondary);
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0.8em 0;
+    border: 1px solid var(--border);
+  }
+  .md-content pre code {
+    background: none;
+    padding: 0;
+    font-size: 0.85em;
+    line-height: 1.5;
+  }
+  .md-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+    overflow-x: auto;
+    display: block;
+    -webkit-overflow-scrolling: touch;
+    font-size: 0.9em;
+  }
+  .md-content th, .md-content td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .md-content th { background: var(--bg-secondary); font-weight: 600; }
+  .md-content img { max-width: 100%; height: auto; border-radius: 6px; margin: 0.5em 0; }
+  .md-content blockquote {
+    border-left: 4px solid var(--accent);
+    margin: 1em 0;
+    padding: 0.5em 1em;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border-radius: 0 var(--radius) var(--radius) 0;
+  }
+  .md-content ul, .md-content ol { padding-left: 1.5em; margin: 0.5em 0; }
+  .md-content li { margin: 0.3em 0; }
+  .md-content hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
+
+  /* Task lists */
+  .md-content .task-list-item { list-style: none; margin-left: -1.5em; }
+  .md-content .task-list-item input { margin-right: 6px; }
+
+  /* Admonition / callout */
+  .md-content .admonition {
+    padding: 12px 16px;
+    margin: 1em 0;
+    border-radius: var(--radius);
+    border-left: 4px solid;
+    background: var(--bg-secondary);
+  }
+  .md-content .admonition.note, .md-content .admonition.info { border-color: var(--accent); }
+  .md-content .admonition.warning { border-color: #f59e0b; }
+  .md-content .admonition.danger { border-color: var(--danger); }
+  .md-content .admonition-title { font-weight: 700; margin-bottom: 4px; }
+
+  /* Mermaid */
+  .md-content .mermaid-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 1em 0;
+    padding: 10px;
+    background: white;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+  @media (prefers-color-scheme: dark) {
+    .md-content .mermaid-container { background: #1e293b; }
+    .md-content .mermaid svg { filter: invert(0.9) hue-rotate(180deg); }
+  }
+  .md-content .mermaid svg { max-width: none; }
+
+  /* KaTeX */
+  .md-content .katex-block {
+    text-align: center;
+    margin: 1em 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 8px 0;
+  }
+  .md-content .katex-inline .katex { font-size: 1.05em; }
+
+  /* Footnotes */
+  .md-content .footnotes { font-size: 0.88em; color: var(--text-secondary); border-top: 1px solid var(--border); margin-top: 2em; padding-top: 1em; }
+
+  /* Action buttons */
+  .action-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 12px 0;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+  .action-bar .file-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-left: auto;
+  }
+
+  /* TOC */
+  .toc-toggle {
+    cursor: pointer;
+    user-select: none;
+    padding: 6px 0;
+    font-size: 14px;
+    color: var(--accent);
+  }
+  .toc {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin: 8px 0 16px;
+    font-size: 14px;
+  }
+  .toc.collapsed { display: none; }
+  .toc h3 { font-size: 14px; margin-bottom: 8px; color: var(--text-secondary); }
+  .toc ul { list-style: none; padding-left: 0; }
+  .toc ul ul { padding-left: 1.2em; }
+  .toc li { margin: 4px 0; }
+  .toc a { color: var(--accent); }
+
+  /* PDF button states */
+  .pdf-status { font-size: 13px; color: var(--text-secondary); margin-left: 8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumbs">
+  <a href="/">🏠 Home</a>
+  <span class="sep">›</span>
+  {% set parts = file_path.split('/') %}
+  {% for i in range(parts|length - 1) %}
+    <a href="/?path={{ '/'.join(parts[:i+1]) }}">{{ parts[i] }}</a>
+    <span class="sep">›</span>
+  {% endfor %}
+  <span>{{ parts[-1] }}</span>
+</div>
+
+<div class="action-bar">
+  <a href="/?path={{ '/'.join(parts[:-1]) if parts|length > 1 else '' }}" class="btn">← Back</a>
+  <a href="/api/download/{{ file_path }}" class="btn">⬇️ Download .md</a>
+  <button id="pdfBtn" class="btn btn-primary" onclick="generatePDF()">📄 Download PDF</button>
+  <span id="pdfStatus" class="pdf-status"></span>
+  <span class="file-meta">{{ mtime }}</span>
+</div>
+
+<div class="toc-toggle" onclick="toggleTOC()">📑 Toggle Table of Contents</div>
+<div id="tocContainer" class="toc">{{ toc | safe }}</div>
+
+<div class="md-content" id="mdContent">
+  {{ html_body | safe }}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if has_mermaid %}
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'default',
+    securityLevel: 'loose',
+  });
+</script>
+{% endif %}
+
+{% if has_math %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/contrib/auto-render.min.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    try {
+      renderMathInElement(document.getElementById('mdContent'), {
+        delimiters: [
+          {left: '$$', right: '$$', display: true},
+          {left: '$', right: '$', display: false}
+        ],
+        throwOnError: false
+      });
+    } catch(e) { console.warn('KaTeX error:', e); }
+  });
+</script>
+{% endif %}
+
+<script>
+  function toggleTOC() {
+    const toc = document.getElementById('tocContainer');
+    toc.classList.toggle('collapsed');
+  }
+
+  async function generatePDF() {
+    const btn = document.getElementById('pdfBtn');
+    const status = document.getElementById('pdfStatus');
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Generating...';
+    status.textContent = '';
+
+    try {
+      const resp = await fetch('/api/md-to-pdf/{{ file_path }}', { method: 'POST' });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({error: 'PDF generation failed'}));
+        throw new Error(err.error || err.detail || 'PDF generation failed');
+      }
+      // Download the PDF
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '{{ file_path.split("/")[-1].replace(".md", ".pdf") }}';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      status.textContent = '✅ PDF ready';
+    } catch(e) {
+      status.textContent = '❌ ' + e.message;
+      showToast('PDF generation failed: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '📄 Download PDF';
+    }
+  }
+</script>
+{% endblock %}

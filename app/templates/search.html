@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="breadcrumbs">
+  <a href="/">🏠 Home</a>
+  <span class="sep">›</span>
+  <span>Search: {{ query }}</span>
+</div>
+
+<h2 style="margin:12px 0; font-size:1.2em;">🔍 Search: "{{ query }}"</h2>
+
+<form class="search-bar" action="/search" method="GET">
+  <input type="text" name="q" placeholder="Search files..." value="{{ query }}">
+  <button type="submit">🔍 Search</button>
+</form>
+
+{% if results %}
+  <p style="margin:8px 0; color:var(--text-secondary); font-size:14px;">Found {{ results|length }} file(s)</p>
+  <ul class="file-list">
+    {% for entry in results %}
+    <li class="file-item">
+      <div class="icon">
+        {% if entry.ext == '.md' %}📝{% elif entry.ext == '.pdf' %}📄{% else %}📎{% endif %}
+      </div>
+      <div class="info">
+        {% if entry.ext == '.md' %}
+          <span class="name"><a href="/md/{{ entry.path }}">{{ entry.name }}</a></span>
+        {% elif entry.ext == '.pdf' %}
+          <span class="name"><a href="/pdf/{{ entry.path }}">{{ entry.name }}</a></span>
+        {% else %}
+          <span class="name"><a href="/api/files/{{ entry.path }}">{{ entry.name }}</a></span>
+        {% endif %}
+        <div class="meta">
+          <span>{{ entry.path }}</span>
+          <span>{{ entry.size_hr }}</span>
+          <span>{{ entry.mtime_hr }}</span>
+        </div>
+      </div>
+      <div class="actions">
+        <a href="/api/download/{{ entry.path }}">⬇️ Download</a>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <div class="empty-state">
+    <div class="icon">🔍</div>
+    <h3>No results found</h3>
+    <p>Try different search terms</p>
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="breadcrumbs">
+  <a href="/">🏠 Home</a>
+  <span class="sep">›</span>
+  <span>Error</span>
+</div>
+
+<div class="empty-state">
+  <div class="icon">⚠️</div>
+  <h2>{{ title }}</h2>
+  <p style="margin-top:12px; color:var(--text-secondary);">{{ error }}</p>
+  <div style="margin-top:24px;">
+    <a href="/" class="btn btn-primary">← Back to Home</a>
+  </div>
+</div>
+{% endblock %}

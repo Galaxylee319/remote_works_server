@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ entry.name }} - Remote Works{% endblock %}
+
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/browse/">Home</a>
+  <span class="sep">/</span>
+  <span>{{ entry.name }}</span>
+</nav>
+
+<div class="action-bar">
+  <a href="/browse/">Back to Files</a>
+  <a href="{{ image_url }}" download>Download Image</a>
+</div>
+
+<div class="image-viewer">
+  <img src="{{ image_url }}" alt="{{ entry.name }}">
+</div>
+
+<div class="action-bar" style="margin-top:12px;">
+  <span class="meta">{{ entry.size_str }} &middot; {{ entry.mtime }}</span>
+  <a href="{{ image_url }}" download>Download</a>
+</div>
+
+{% endblock %}

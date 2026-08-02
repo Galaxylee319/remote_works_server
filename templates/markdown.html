@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}{{ entry.name }} - Remote Works{% endblock %}
+
+{% block head_extra %}
+{% if enable_math %}
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$','$'], ['\\(','\\)']],
+    displayMath: [['$$','$$'], ['\\[','\\]']],
+    processEscapes: true
+  },
+  svg: { fontCache: 'global' },
+  options: {
+    ignoreHtmlClass: 'no-math'
+  }
+};
+</script>
+<script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+{% endif %}
+
+{% if enable_mermaid %}
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'default',
+      securityLevel: 'loose',
+      flowchart: { useMaxWidth: true, htmlLabels: true },
+    });
+  }
+});
+</script>
+{% endif %}
+
+{% if enable_highlight %}
+<style>
+/* Pygments Monokai theme - compact version */
+.highlight .hll { background-color: #49483e }
+.highlight .c { color: #75715e } /* Comment */
+.highlight .k { color: #66d9ef } /* Keyword */
+.highlight .o { color: #f92672 } /* Operator */
+.highlight .ch { color: #75715e } /* Comment.Hashbang */
+.highlight .cm { color: #75715e } /* Comment.Multiline */
+.highlight .cp { color: #75715e } /* Comment.Preproc */
+.highlight .c1 { color: #75715e } /* Comment.Single */
+.highlight .cs { color: #75715e } /* Comment.Special */
+.highlight .kc { color: #66d9ef } /* Keyword.Constant */
+.highlight .kd { color: #66d9ef } /* Keyword.Declaration */
+.highlight .kn { color: #f92672 } /* Keyword.Namespace */
+.highlight .kp { color: #66d9ef } /* Keyword.Pseudo */
+.highlight .kr { color: #66d9ef } /* Keyword.Reserved */
+.highlight .kt { color: #66d9ef } /* Keyword.Type */
+.highlight .m { color: #ae81ff } /* Literal.Number */
+.highlight .s { color: #e6db74 } /* Literal.String */
+.highlight .na { color: #a6e22e } /* Name.Attribute */
+.highlight .nb { color: #f8f8f2 } /* Name.Builtin */
+.highlight .nc { color: #a6e22e } /* Name.Class */
+.highlight .no { color: #66d9ef } /* Name.Constant */
+.highlight .nd { color: #a6e22e } /* Name.Decorator */
+.highlight .nf { color: #a6e22e } /* Name.Function */
+.highlight .nv { color: #f8f8f2 } /* Name.Variable */
+.highlight .w { color: #f8f8f2 } /* Text.Whitespace */
+</style>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+
+<!-- Breadcrumbs -->
+<nav class="breadcrumbs">
+  <a href="/browse/">Home</a>
+  <span class="sep">/</span>
+  <span>{{ entry.name }}</span>
+</nav>
+
+<!-- Action Bar -->
+<div class="action-bar">
+  <a href="/browse/{{ entry.path | replace('/', '/../') | default('..', true) }}">Back</a>
+  <a href="/download/{{ entry.path }}" download>Download .md</a>
+  {% if pdf_enabled %}
+  <a href="/api/pdf/{{ entry.path }}" id="pdf-link">Download PDF</a>
+  <a href="#" onclick="regeneratePDF(event)" style="font-size:0.8rem;">Regenerate PDF</a>
+  {% endif %}
+</div>
+
+<!-- TOC -->
+{% if enable_toc %}
+<details class="toc-panel" id="toc-panel">
+  <summary>Table of Contents</summary>
+  <nav id="toc-nav"></nav>
+</details>
+{% endif %}
+
+<!-- Markdown Content -->
+<article class="markdown-body">
+{{ content_html | safe }}
+</article>
+
+<!-- Bottom actions -->
+<div class="action-bar" style="margin-top:20px;">
+  <a href="/browse/">Back to Files</a>
+  <a href="/download/{{ entry.path }}" download>Download .md</a>
+  {% if pdf_enabled %}
+  <a href="/api/pdf/{{ entry.path }}">Download PDF</a>
+  {% endif %}
+</div>
+
+{% if enable_toc %}
+<script>
+(function() {
+  const toc = document.getElementById('toc-nav');
+  if (!toc) return;
+  const headings = document.querySelectorAll('.markdown-body h1, .markdown-body h2, .markdown-body h3');
+  if (headings.length < 2) {
+    document.getElementById('toc-panel').style.display = 'none';
+    return;
+  }
+  let html = '<ul>';
+  let currentLevel = 0;
+  headings.forEach(function(h) {
+    const level = parseInt(h.tagName.charAt(1));
+    const text = h.textContent;
+    const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    h.id = id;
+    if (level > currentLevel) {
+      html += '<ul>'.repeat(level - currentLevel);
+    } else if (level < currentLevel) {
+      html += '</ul>'.repeat(currentLevel - level);
+    }
+    html += '<li><a href="#' + id + '">' + text + '</a></li>';
+    currentLevel = level;
+  });
+  html += '</ul>'.repeat(currentLevel);
+  toc.innerHTML = html;
+})();
+</script>
+{% endif %}
+
+{% if pdf_enabled %}
+<script>
+async function regeneratePDF(e) {
+  e.preventDefault();
+  const link = document.getElementById('pdf-link');
+  link.textContent = 'Generating...';
+  try {
+    await fetch('/api/pdf/{{ entry.path }}/regenerate', { method: 'POST' });
+    link.textContent = 'Download PDF (regenerated)';
+    window.location.href = '/api/pdf/{{ entry.path }}';
+  } catch (err) {
+    link.textContent = 'PDF generation failed';
+    link.style.color = 'var(--danger)';
+  }
+}
+</script>
+{% endif %}
+
+{% endblock %}

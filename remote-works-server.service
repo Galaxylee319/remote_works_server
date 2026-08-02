@@ -1,0 +1,25 @@
+[Unit]
+Description=Remote Works Server
+Documentation=https://github.com/user/remote-works-server
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=galaxybot
+Group=galaxybot
+WorkingDirectory=/home/galaxybot/remote_works_server
+Environment=PATH=/home/galaxybot/remote_works_server/venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/galaxybot/remote_works_server/venv/bin/python3 /home/galaxybot/remote_works_server/server.py
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=remote-works-server
+
+[Install]
+WantedBy=multi-user.target

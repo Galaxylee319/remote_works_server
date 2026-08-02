@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{% block title %}Remote Works{% endblock %}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="stylesheet" href="/static/style.css">
+{% block head_extra %}{% endblock %}
+</head>
+<body>
+<header>
+  <a href="/browse/" class="logo">Remote Works</a>
+  <div class="nav-links">
+    <a href="/browse/">Files</a>
+    <a href="/api/recent">Recent</a>
+    {% if authenticated %}
+    <a href="/logout">Logout</a>
+    {% endif %}
+  </div>
+</header>
+
+<main>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ entry.name }} - Remote Works{% endblock %}
+
+{% block content %}
+
+<nav class="breadcrumbs">
+  <a href="/browse/">Home</a>
+  <span class="sep">/</span>
+  <span>{{ entry.name }}</span>
+</nav>
+
+<div class="action-bar">
+  <a href="/browse/">Back to Files</a>
+  <a href="{{ pdf_url }}" download>Download PDF</a>
+</div>
+
+<div class="pdf-viewer-container">
+  <iframe src="{{ pdf_url }}#toolbar=0&navpanes=0" title="{{ entry.name }}">
+    <div class="pdf-fallback">
+      <p>Your browser does not support embedded PDF viewing.</p>
+      <a href="{{ pdf_url }}" download class="download-btn">Download PDF</a>
+    </div>
+  </iframe>
+</div>
+
+<div class="action-bar" style="margin-top:12px;">
+  <span class="meta">{{ entry.size_str }} &middot; {{ entry.mtime }}</span>
+  <a href="{{ pdf_url }}" download>Download</a>
+</div>
+
+{% endblock %}
