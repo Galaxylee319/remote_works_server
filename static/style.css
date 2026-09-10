@@ -812,6 +812,10 @@ mjx-container {
   border-radius: 3px;
 }
 
+/* hidden 属性必须可靠生效：作者样式的 display 会覆盖浏览器默认的 [hidden]{display:none}，
+   导致「列表视图下网格仍显示」的问题。此处统一兜底。 */
+[hidden] { display: none !important; }
+
 /* === 网格视图（借鉴 filebrowser / copyparty 的缩略图网格）=== */
 .grid-view {
   display: grid;
