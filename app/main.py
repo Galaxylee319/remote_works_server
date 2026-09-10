@@ -41,6 +41,7 @@ from app.file_browser import (
     resolve_safe_path,
     search_files,
     search_content,
+    sibling_files,
     sibling_media,
     get_recent_files,
 )
@@ -507,12 +508,24 @@ async def _markdown_page(request: Request, rel_path: str):
 
     has_math = "$$" in text or "$" in text or "\\[" in text or "\\(" in text
     pdf_available = get_cached_pdf(abs_path, text) is not None
+
+    # 同目录其他 Markdown：上一个/下一个 + 列表（便于连续阅读阶段报告）
+    sibs = sibling_files(abs_path, config["root_dir"], (".md", ".markdown"), limit=300)
+    sidx = next((i for i, x in enumerate(sibs) if x["path"] == info["path"]), -1)
+    doc_prev = sibs[sidx - 1] if sidx > 0 else None
+    doc_next = sibs[sidx + 1] if 0 <= sidx < len(sibs) - 1 else None
+    others = [x for x in sibs if x["path"] != info["path"]]
+
     return templates.TemplateResponse(
         "markdown.html",
         _context(
             request,
             entry=info,
             title=title,
+            doc_prev=doc_prev,
+            doc_next=doc_next,
+            doc_others=others[:12],
+            doc_total=len(others),
             content_html=html_body,
             toc_html=toc_html,
             has_mermaid=has_mermaid and config["markdown"].get("mermaid", True),

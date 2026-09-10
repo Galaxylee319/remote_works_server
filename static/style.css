@@ -915,3 +915,42 @@ mjx-container {
   cursor: pointer;
 }
 .select-bar #select-clear { background: transparent; color: var(--text-secondary); border-color: var(--border); }
+
+/* === Markdown 同目录文档导航 === */
+.doc-nav {
+  margin-top: 20px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.doc-nav-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+}
+.doc-nav-pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.85rem;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.doc-nav-pager a { text-decoration: none; color: var(--accent); }
+.doc-nav-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 0.84rem;
+  column-count: 2;
+  column-gap: 18px;
+}
+.doc-nav-list li { padding: 2px 0; break-inside: avoid; }
+.doc-nav-list a { color: var(--text-secondary); text-decoration: none; }
+.doc-nav-list a:hover { color: var(--accent); text-decoration: underline; }
+@media (max-width: 560px) { .doc-nav-list { column-count: 1; } }

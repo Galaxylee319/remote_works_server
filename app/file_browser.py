@@ -173,9 +173,10 @@ def icon_for(entry_type: str) -> str:
     return TYPE_ICONS.get(entry_type, TYPE_ICONS["other"])
 
 
-def sibling_media(abs_path: str, root_dir: str, limit: int = 400) -> List[Dict]:
-    """同目录下的图片列表（按名称排序），用于查看器的上一张/下一张导航。"""
+def sibling_files(abs_path: str, root_dir: str, exts, limit: int = 400) -> List[Dict]:
+    """同目录下指定扩展名的文件列表（按名称排序），用于上一个/下一个导航。"""
     folder = os.path.dirname(abs_path)
+    exts = {e.lower() for e in exts}
     try:
         names = sorted(os.listdir(folder), key=lambda n: n.lower())
     except OSError:
@@ -185,12 +186,17 @@ def sibling_media(abs_path: str, root_dir: str, limit: int = 400) -> List[Dict]:
         full = os.path.join(folder, name)
         if not os.path.isfile(full):
             continue
-        if os.path.splitext(name)[1].lower() not in IMAGE_EXTS:
+        if os.path.splitext(name)[1].lower() not in exts:
             continue
         items.append({"name": name, "path": os.path.relpath(full, root_dir), "abs": full})
         if len(items) >= limit:
             break
     return items
+
+
+def sibling_media(abs_path: str, root_dir: str, limit: int = 400) -> List[Dict]:
+    """同目录下的图片列表（按名称排序），用于查看器的上一张/下一张导航。"""
+    return sibling_files(abs_path, root_dir, IMAGE_EXTS, limit)
 
 
 def _entry_dict(full: str, root_dir: str, is_dir: bool) -> Optional[Dict]:

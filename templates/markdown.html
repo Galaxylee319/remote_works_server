@@ -64,6 +64,36 @@ document.addEventListener('DOMContentLoaded', function() {
 {{ content_html | safe }}
 </article>
 
+{% if doc_prev or doc_next or doc_others %}
+<nav class="doc-nav">
+  <div class="doc-nav-head">
+    <span>同目录其他文档</span>
+    {% if doc_total %}<span class="meta">共 {{ doc_total }} 份</span>{% endif %}
+  </div>
+  <div class="doc-nav-pager">
+    {% if doc_prev %}<a href="/view/{{ doc_prev.path }}" title="上一份（←）">← {{ doc_prev.name }}</a>{% else %}<span class="meta">已是最前一份</span>{% endif %}
+    {% if doc_next %}<a href="/view/{{ doc_next.path }}" title="下一份（→）">{{ doc_next.name }} →</a>{% else %}<span class="meta">已是最后一份</span>{% endif %}
+  </div>
+  {% if doc_others %}
+  <ul class="doc-nav-list">
+    {% for d in doc_others %}
+    <li><a href="/view/{{ d.path }}">{{ d.name }}</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</nav>
+
+<script>
+document.addEventListener('keydown', function (e) {
+  if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+  var p = {{ (doc_prev.path if doc_prev else '') | tojson }};
+  var n = {{ (doc_next.path if doc_next else '') | tojson }};
+  if (e.key === 'ArrowLeft' && p && !e.altKey && !e.ctrlKey) location.href = '/view/' + p;
+  if (e.key === 'ArrowRight' && n && !e.altKey && !e.ctrlKey) location.href = '/view/' + n;
+});
+</script>
+{% endif %}
+
 <div class="action-bar" style="margin-top:20px;">
   <a href="/browse/">返回文件列表</a>
   <a href="/download/{{ entry.path }}" download>下载 .md</a>
