@@ -15,15 +15,15 @@ import sys
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8099"
 PAGES = [
     ("首页目录", "/browse/"),
-    ("深目录", "/browse/phases/VDT10-fair-budget-information-selection/"),
+    ("深目录", "/browse/阶段报告/VDT10-fair-budget-information-selection/"),
     ("图片目录", "/browse/figures_TypeI/"),
     ("搜索结果(正文)", "/search?q=%E9%80%80%E5%8C%96&mode=content"),
     ("搜索(文件名)", "/search?q=README&mode=name"),
     ("最近更新", "/recent"),
-    ("Markdown 报告", "/view/phases/VDT10-fair-budget-information-selection/Phase_VDT10_Fair_Budget_Information_Selection.md"),
+    ("Markdown 报告", "/view/阶段报告/VDT10-fair-budget-information-selection/Phase_VDT10_Fair_Budget_Information_Selection.md"),
     ("图片查看", "/view/figures_paper/fig3_corridor3_paired.png"),
     ("文本/日志", "/view/CHANGELOG.md"),
-    ("PDF 查看", "/view/phases/VDT10-fair-budget-information-selection/Phase_VDT10_Fair_Budget_Information_Selection.pdf"),
+    ("PDF 查看", "/view/阶段报告/VDT10-fair-budget-information-selection/Phase_VDT10_Fair_Budget_Information_Selection.pdf"),
     ("登录页", "/login"),
     ("RSS", "/feed.xml"),
 ]

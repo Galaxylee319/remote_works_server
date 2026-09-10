@@ -19,6 +19,7 @@ from fastapi.responses import (
     RedirectResponse,
     Response,
 )
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.background import BackgroundTask
@@ -71,6 +72,63 @@ os.makedirs(static_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 app.add_middleware(AuthMiddleware)
+
+
+# 目录名汉化迁移表：旧英文路径 → 新中文路径
+# 作用：历史书签、旧文档里写死的 URL、外部链接仍可访问（307 临时重定向，保留方法与查询串）。
+PATH_ALIASES = {
+    "archive": "归档",
+    "data": "数据",
+    "deliverables": "交付物",
+    "docs": "文档",
+    "experiments": "实验",
+    "figures_paper": "论文插图",
+    "figures_TypeI": "TypeI图表",
+    "papers": "论文",
+    "phases": "阶段报告",
+    "plans": "计划",
+    "reports": "报告",
+    "scripts": "脚本",
+    "typeI_logs": "TypeI日志",
+    "paper_translation": "论文翻译",
+}
+
+
+class PathAliasMiddleware(BaseHTTPMiddleware):
+    """把旧顶层目录名的 URL 重定向到新中文名。
+
+    别名可能出现在第 1 段（根级）或第 2 段（`/browse/<别名>/…`、`/view/<别名>/…`、
+    `/api/files/<别名>/…` 等），因此按路由前缀逐段匹配。
+    """
+
+    # 段数不定的前缀放后面匹配（先试更长的）
+    ROUTE_PREFIXES = (
+        "api/download-zip", "api/files", "api/pdf",
+        "browse", "view", "pdf", "md", "download", "thumb",
+    )
+
+    async def dispatch(self, request: Request, call_next):
+        parts = request.url.path.lstrip("/").split("/")
+        new_parts = None
+        for pref in self.ROUTE_PREFIXES:
+            pseg = pref.split("/")
+            if len(parts) > len(pseg) and parts[: len(pseg)] == pseg:
+                head = parts[len(pseg)]
+                if head in PATH_ALIASES and head != PATH_ALIASES[head]:
+                    new_parts = parts[: len(pseg)] + [PATH_ALIASES[head]] + parts[len(pseg) + 1 :]
+                break
+        if new_parts is None and parts and parts[0] in PATH_ALIASES:
+            new_parts = [PATH_ALIASES[parts[0]]] + parts[1:]
+        if new_parts is not None:
+            url = "/" + "/".join(new_parts)
+            if request.url.query:
+                url += "?" + request.url.query
+            return RedirectResponse(url=url, status_code=307)
+        return await call_next(request)
+
+
+# 后添加的中间件在最外层：别名重定向先于鉴权执行，未登录也能被正确跳转
+app.add_middleware(PathAliasMiddleware)
 
 STARTED_AT = time.time()
 TEXT_PREVIEW_LIMIT = 2 * 1024 * 1024  # 2 MiB

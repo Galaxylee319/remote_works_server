@@ -9,13 +9,13 @@
     RWS_CONFIG=/tmp/rws_ui.yaml ./venv/bin/python3 run.py &
     # 2) 运行
     ./venv/bin/python3 tests/test_browse_ui.py [base_url] [path]
-    默认 base_url=http://127.0.0.1:8099 path=/browse/figures_paper/
+    默认 base_url=http://127.0.0.1:8099 path=/browse/论文插图/
 """
 import sys
 from playwright.sync_api import sync_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8099"
-PATH = sys.argv[2] if len(sys.argv) > 2 else "/browse/figures_paper/"
+PATH = sys.argv[2] if len(sys.argv) > 2 else "/browse/论文插图/"
 fails = []
 
 

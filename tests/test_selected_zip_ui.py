@@ -18,7 +18,7 @@ def check(n, got, want=True):
 with sync_playwright() as p:
     b = p.chromium.launch(args=["--no-sandbox"])
     page = b.new_page(viewport={"width": 420, "height": 900}, accept_downloads=True)
-    page.goto(f"{BASE}/browse/figures_paper/", wait_until="networkidle")
+    page.goto(f"{BASE}/browse/论文插图/", wait_until="networkidle")
 
     n_boxes = page.eval_on_selector_all(".pick-box", "els => els.length")
     check("勾选框数量 > 0", n_boxes > 0)

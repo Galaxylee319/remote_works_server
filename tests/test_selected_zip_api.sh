@@ -17,12 +17,12 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X POST --max-time 15 "$BASE/api/d
 chk "空提交" "$code" "400"
 
 echo "【目录打包】"
-curl -s -X POST -d "paths=figures_paper" --max-time 60 "$BASE/api/download-selected" -o /tmp/_t_dir.zip
+curl -s -X POST --data-urlencode "paths=论文插图" --max-time 60 "$BASE/api/download-selected" -o /tmp/_t_dir.zip
 n=$(python3 -c "import zipfile;print(len(zipfile.ZipFile('/tmp/_t_dir.zip').namelist()))" 2>/dev/null || echo 0)
 chk "目录条目数>0" "$([ "$n" -gt 0 ] && echo yes || echo no)" "yes"
 
 echo "【文件+目录混合去重】"
-curl -s -X POST -d "paths=papers/README.md" -d "paths=papers" -d "paths=papers/draft/README.md" \
+curl -s -X POST --data-urlencode "paths=论文/README.md" --data-urlencode "paths=论文" --data-urlencode "paths=论文/draft/README.md" \
   --max-time 120 "$BASE/api/download-selected" -o /tmp/_t_mix.zip
 dup=$(python3 -c "
 import zipfile;n=zipfile.ZipFile('/tmp/_t_mix.zip').namelist()

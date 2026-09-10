@@ -15,7 +15,7 @@ def check(n, got, want=True):
     if not ok: fails.append(n)
 with sync_playwright() as p:
     b=p.chromium.launch(args=["--no-sandbox"]); ctx=b.new_context(viewport={"width":390,"height":844}); pg=ctx.new_page()
-    pg.goto(f"{BASE}/browse/phases/VDT10-fair-budget-information-selection/", wait_until="networkidle")
+    pg.goto(f"{BASE}/browse/阶段报告/VDT10-fair-budget-information-selection/", wait_until="networkidle")
     off = pg.eval_on_selector("#navpane", "el => el.getBoundingClientRect().left >= window.innerWidth - 2")
     check("默认隐藏（在视口外）", off)
     pg.click("#navpane-toggle"); pg.wait_for_timeout(500)
@@ -25,7 +25,7 @@ with sync_playwright() as p:
     check("层级数=3", pg.eval_on_selector_all(".nav-level", "els => els.length"), 3)
     check("当前分支高亮数=2", pg.eval_on_selector_all(".nav-level li.on-branch", "els => els.length"), 2)
     cur = pg.eval_on_selector(".nav-level li.on-branch a", "el => el.textContent.trim()")
-    check("高亮项含当前目录名", "VDT10" in cur or "phases" in cur, True)
+    check("高亮项含当前分支名", ("VDT10" in cur) or ("阶段报告" in cur), True)
     # 无横向溢出（抽屉打开时）
     sw = pg.evaluate("Math.max(document.documentElement.scrollWidth, document.body.scrollWidth)")
     check("抽屉打开无横向溢出", sw <= 391, True)
