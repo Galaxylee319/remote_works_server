@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ title }} - Remote Works{% endblock %}
+{% block title %}{{ title }} · 远程工作区{% endblock %}
 
 {% block head_extra %}
 {% if enable_math and has_math %}
@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', function() {
 {% block content %}
 
 <nav class="breadcrumbs">
-  <a href="/browse/">Home</a>
+  <a href="/browse/">首页</a>
   {% for part in file_path.split('/')[:-1] %}
     <span class="sep">/</span><span>{{ part }}</span>
   {% endfor %}

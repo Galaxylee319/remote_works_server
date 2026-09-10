@@ -19,7 +19,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/galaxybot/.cache/remote_works_server /home/galaxybot/remote_works_server
+ReadWritePaths=/home/galaxybot/.cache/remote_works_server /home/galaxybot/remote_works_server /home/galaxybot/remote_works
 UMask=0027
 
 StandardOutput=journal

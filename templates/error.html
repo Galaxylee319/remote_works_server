@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Error - Remote Works{% endblock %}
+{% block title %}出错了 · 远程工作区{% endblock %}
 
 {% block content %}
 
 <div class="error-page">
   <div class="icon">&#9888;&#65039;</div>
-  <h1>{{ error or "Error" }}</h1>
+  <h1>{{ error or "出错了" }}</h1>
   <p>{{ message or "发生未知错误" }}</p>
   <a href="/browse/">返回文件列表</a>
 </div>

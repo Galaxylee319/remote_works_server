@@ -1,32 +1,196 @@
 {% extends "base.html" %}
-{% block title %}{{ entry.name }} - Remote Works{% endblock %}
+{% block title %}{{ entry.name }} · 远程工作区{% endblock %}
+
+{% block head_extra %}
+<script src="/static/pdfjs/pdf.min.js?v=2.16.105"></script>
+<style>
+  .pdf-toolbar {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    background: #f5f6f8; border: 1px solid #ddd; border-radius: 6px;
+    padding: 8px 10px; margin-bottom: 10px; font-size: 14px;
+  }
+  .pdf-toolbar .pdf-title {
+    font-weight: 600; max-width: 100%; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; flex: 1 1 160px;
+  }
+  .pdf-toolbar a, .pdf-toolbar button {
+    padding: 4px 10px; border: 1px solid #c8ccd4; border-radius: 4px;
+    background: #fff; color: #1a3e6e; text-decoration: none;
+    font-size: 14px; line-height: 1.4; cursor: pointer;
+  }
+  .pdf-toolbar button:disabled { opacity: 0.4; cursor: default; }
+  .pdf-toolbar .group { display: flex; align-items: center; gap: 4px; }
+  .pdf-toolbar .page-info { min-width: 72px; text-align: center; }
+  .pdf-canvas-wrap { overflow: auto; text-align: center; background: #525659;
+                     border-radius: 6px; padding: 10px 0 16px; min-height: 300px; }
+  .pdf-canvas-wrap canvas { margin: 8px auto 0; display: block;
+                            box-shadow: 0 1px 6px rgba(0,0,0,.45); background: #fff; }
+  .pdf-status { padding: 40px 16px; text-align: center; color: #eee; font-size: 15px; }
+  .pdf-status a { color: #9ecbff; }
+  .pdf-error { color: #ffd7d7; }
+</style>
+{% endblock %}
 
 {% block content %}
 
 <nav class="breadcrumbs">
-  <a href="/browse/">Home</a>
+  <a href="/browse/">首页</a>
   <span class="sep">/</span>
   <span>{{ entry.name }}</span>
 </nav>
 
-<div class="action-bar">
-  <a href="/browse/">返回</a>
-  <a href="/download/{{ entry.path }}" download>下载 PDF</a>
+<div class="pdf-toolbar">
+  <a id="link-back" href="/browse/">返回</a>
+  <span class="pdf-title" title="{{ entry.name }}">{{ entry.name }}</span>
+  <span class="group">
+    <button id="pg-prev" title="上一页">&#9664;</button>
+    <span class="page-info"><span id="pg-cur">-</span> / <span id="pg-num">-</span></span>
+    <button id="pg-next" title="下一页">&#9654;</button>
+  </span>
+  <span class="group">
+    <button id="zoom-out" title="缩小">&minus;</button>
+    <span class="page-info" id="zoom-val">100%</span>
+    <button id="zoom-in" title="放大">&plus;</button>
+    <button id="zoom-fit" title="适应宽度">适宽</button>
+  </span>
+  <span class="group">
+    <a id="link-raw" href="#" target="_blank" rel="noopener">新标签打开</a>
+    <a id="link-download" href="#" download>下载 PDF</a>
+  </span>
 </div>
 
-<div class="pdf-viewer-container">
-  <iframe src="/api/files/{{ entry.path }}#toolbar=0&navpanes=0" title="{{ entry.name }}">
-    <div class="pdf-fallback">
-      <p>浏览器不支持内嵌 PDF 预览，请直接下载。</p>
-      <a href="/download/{{ entry.path }}" download class="download-btn">下载 PDF</a>
-    </div>
-  </iframe>
+<div class="pdf-canvas-wrap" id="pdf-wrap">
+  <div class="pdf-status" id="pdf-status">正在加载 PDF…</div>
+  <canvas id="pdf-canvas" style="display:none"></canvas>
 </div>
 
 <div class="action-bar" style="margin-top:12px;">
   <span class="meta">{{ entry.size_str }} &middot; {{ entry.mtime_str }}</span>
-  <a href="/download/{{ entry.path }}" download>下载</a>
+  <a id="link-download-2" href="#" download>下载</a>
 </div>
 
-{% endblock %}
+<script>
+(function () {
+  var rawPath = {{ entry.path | tojson }};
+  // 按路径段做百分号编码，保留分隔符，兼容中文、空格、# 等字符
+  var encPath = rawPath.split('/').map(encodeURIComponent).join('/');
+  var fileUrl = '/api/files/' + encPath;
+  var downloadUrl = '/download/' + encPath;
+  var dirUrl = '/browse/' + encPath.split('/').slice(0, -1).join('/') + '/';
 
+  document.getElementById('link-back').href = dirUrl;
+  document.getElementById('link-raw').href = fileUrl;
+  document.getElementById('link-download').href = downloadUrl;
+  document.getElementById('link-download-2').href = downloadUrl;
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/static/pdfjs/pdf.worker.min.js?v=2.16.105';
+
+  var wrap = document.getElementById('pdf-wrap');
+  var canvas = document.getElementById('pdf-canvas');
+  var statusEl = document.getElementById('pdf-status');
+  var pgCur = document.getElementById('pg-cur');
+  var pgNum = document.getElementById('pg-num');
+  var prevBtn = document.getElementById('pg-prev');
+  var nextBtn = document.getElementById('pg-next');
+  var zoomInBtn = document.getElementById('zoom-in');
+  var zoomOutBtn = document.getElementById('zoom-out');
+  var zoomFitBtn = document.getElementById('zoom-fit');
+  var zoomVal = document.getElementById('zoom-val');
+
+  var pdfDoc = null, pageNum = 1, rendering = false, pending = null;
+  var zoom = 1.0;          // 相对于"适应宽度"的倍率
+  var MAXZ = 5.0, MINZ = 0.4;
+
+  function setStatus(html, isError) {
+    statusEl.style.display = 'block';
+    statusEl.className = 'pdf-status' + (isError ? ' pdf-error' : '');
+    statusEl.innerHTML = html;
+  }
+  function hideStatus() { statusEl.style.display = 'none'; }
+
+  function fitWidthScale(page) {
+    var base = page.getViewport({ scale: 1.0 });
+    var avail = wrap.clientWidth - 24;
+    return Math.max(0.1, avail / base.width);
+  }
+
+  function renderPage(num) {
+    if (!pdfDoc) return;
+    if (rendering) { pending = num; return; }
+    rendering = true;
+    pdfDoc.getPage(num).then(function (page) {
+      var scale = fitWidthScale(page) * zoom;
+      var viewport = page.getViewport({ scale: scale });
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(viewport.width * dpr);
+      canvas.height = Math.floor(viewport.height * dpr);
+      canvas.style.width = Math.floor(viewport.width) + 'px';
+      canvas.style.height = Math.floor(viewport.height) + 'px';
+      var ctx = canvas.getContext('2d');
+      return page.render({
+        canvasContext: ctx,
+        viewport: viewport,
+        transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null
+      }).promise.then(function () {
+        canvas.style.display = 'block';
+        hideStatus();
+        pgCur.textContent = num;
+        prevBtn.disabled = num <= 1;
+        nextBtn.disabled = num >= pdfDoc.numPages;
+        rendering = false;
+        if (pending) { var p = pending; pending = null; renderPage(p); }
+      });
+    }).catch(function (err) {
+      rendering = false;
+      setStatus('第 ' + num + ' 页渲染失败：' + err, true);
+    });
+  }
+
+  function goPage(n) {
+    if (!pdfDoc) return;
+    n = Math.min(Math.max(1, n), pdfDoc.numPages);
+    if (n === pageNum && canvas.style.display !== 'none') return;
+    pageNum = n;
+    renderPage(pageNum);
+  }
+
+  pdfjsLib.getDocument({
+    url: fileUrl,
+    cMapUrl: '/static/pdfjs/cmaps/',
+    cMapPacked: true,
+    standardFontDataUrl: '/static/pdfjs/standard_fonts/'
+  }).promise.then(function (doc) {
+    pdfDoc = doc;
+    pgNum.textContent = doc.numPages;
+    renderPage(pageNum);
+  }).catch(function (err) {
+    setStatus(
+      'PDF 加载失败：' + err + '<br>' +
+      '<a href="' + fileUrl + '" target="_blank" rel="noopener">尝试浏览器原生打开</a> 或 ' +
+      '<a href="' + downloadUrl + '" download>直接下载</a>', true);
+  });
+
+  prevBtn.addEventListener('click', function () { goPage(pageNum - 1); });
+  nextBtn.addEventListener('click', function () { goPage(pageNum + 1); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') goPage(pageNum - 1);
+    if (e.key === 'ArrowRight' || e.key === 'PageDown') goPage(pageNum + 1);
+  });
+  function setZoom(z) {
+    zoom = Math.min(MAXZ, Math.max(MINZ, z));
+    zoomVal.textContent = Math.round(zoom * 100) + '%';
+    renderPage(pageNum);
+  }
+  zoomInBtn.addEventListener('click', function () { setZoom(zoom + 0.25); });
+  zoomOutBtn.addEventListener('click', function () { setZoom(zoom - 0.25); });
+  zoomFitBtn.addEventListener('click', function () { setZoom(1.0); });
+  var rzTimer = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(rzTimer);
+    rzTimer = setTimeout(function () { if (pdfDoc) renderPage(pageNum); }, 250);
+  });
+})();
+</script>
+
+{% endblock %}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ current_path or "Files" }} - Remote Works{% endblock %}
+{% block title %}{{ current_path or "文件" }} · 远程工作区{% endblock %}
 
 {% block content %}
 
@@ -44,7 +44,7 @@
         </div>
         <div class="actions">
           {% if zip_enabled %}
-          <a href="/api/download-zip/{{ entry.path }}">ZIP</a>
+          <a href="/api/download-zip/{{ entry.path }}">下载 ZIP</a>
           {% endif %}
         </div>
       </div>

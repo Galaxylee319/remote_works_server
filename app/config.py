@@ -59,6 +59,7 @@ DEFAULTS: Dict[str, Any] = {
         "title": "Remote Works",
         "version": "2.0.0",
     },
+    "sync_dirs": {},
 }
 
 
@@ -100,6 +101,11 @@ def load_config(config_path: str = None) -> Dict[str, Any]:
     # ---- Normalise paths ----
     cfg["root_dir"] = os.path.abspath(os.path.expanduser(cfg["root_dir"]))
     cfg["cache_dir"] = os.path.abspath(os.path.expanduser(cfg["cache_dir"]))
+    cfg["sync_dirs"] = {
+        str(name): os.path.abspath(os.path.expanduser(src))
+        for name, src in cfg.get("sync_dirs", {}).items()
+        if src
+    }
 
     # ---- Type sanity ----
     cfg["port"] = int(cfg["port"])

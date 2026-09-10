@@ -112,6 +112,11 @@ class FileIndex:
         self.root_dir = Path(paths.get("root_dir", os.path.expanduser("~/remote_works"))).resolve()
         self.max_files = config.get("search", {}).get("max_files", 10000)
         self.exclude_patterns = config.get("search", {}).get("exclude", [".*"])
+        self.sync_dirs = {}
+        for name, src in config.get("sync_dirs", {}).items():
+            src_abs = os.path.abspath(os.path.expanduser(str(src)))
+            if os.path.isdir(src_abs):
+                self.sync_dirs[str(name)] = src_abs
 
     def list_directory(self, rel_path: str = "") -> List[FileEntry]:
         """List files in a directory relative to root_dir."""
@@ -144,7 +149,7 @@ class FileIndex:
         results = []
         query_lower = query.lower()
 
-        for root, dirs, files in os.walk(str(self.root_dir)):
+        for root, dirs, files in os.walk(str(self.root_dir), followlinks=True):
             # Filter excluded dirs
             dirs[:] = [d for d in dirs if not self._is_excluded(d)]
 
@@ -166,7 +171,7 @@ class FileIndex:
     def recent_files(self, limit: int = 50) -> List[FileEntry]:
         """Get recently modified files."""
         entries = []
-        for root, dirs, files in os.walk(str(self.root_dir)):
+        for root, dirs, files in os.walk(str(self.root_dir), followlinks=True):
             dirs[:] = [d for d in dirs if not self._is_excluded(d)]
             for name in files:
                 if self._is_excluded(name):
@@ -200,17 +205,30 @@ class FileIndex:
             return None
 
     def _resolve_path(self, rel_path: str) -> Optional[Path]:
-        """Resolve a relative path, preventing path traversal."""
-        # Normalize the path: remove .. and .
-        rel = rel_path.lstrip("/")
-        target = (self.root_dir / rel).resolve()
+        """Resolve a relative path, preventing path traversal.
 
-        # Ensure target is within root_dir
-        try:
-            target.relative_to(self.root_dir)
-        except ValueError:
+        Keeps the logical path inside root_dir so configured sync links are
+        exposed as /browse/<alias>/..., while verifying with realpath that the
+        target stays inside root_dir or a configured sync_dirs source.
+        """
+        rel = rel_path.lstrip("/")
+        target = Path(os.path.abspath(os.path.join(str(self.root_dir), rel)))
+        root_abs = str(self.root_dir)
+
+        # Logical path must stay inside the served root (symlink aliases live here).
+        if str(target) != root_abs and not str(target).startswith(root_abs + os.sep):
             return None
 
+        target_real = Path(os.path.realpath(target))
+        allowed = [root_abs] + list(self.sync_dirs.values())
+        if not any(
+            str(target_real) == r or str(target_real).startswith(r + os.sep)
+            for r in allowed
+        ):
+            return None
+
+        if not target.exists():
+            return None
         return target
 
     def _is_excluded(self, name: str) -> bool:

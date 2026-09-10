@@ -72,7 +72,7 @@ def get_parser() -> MarkdownIt:
 
 
 def _protect_math(text: str) -> Tuple[str, list, list]:
-    """Extract ``$$...$$`` and ``$...$`` math so markdown-it can't mangle it."""
+    """Extract ``$$...$$``/``$...$`` and ``\\[...\\]``/``\\(...\\)`` math so markdown-it can't mangle it."""
     block_math = []
     inline_math = []
 
@@ -80,10 +80,19 @@ def _protect_math(text: str) -> Tuple[str, list, list]:
         block_math.append(m.group(1).strip())
         return "%%MATHBLOCK%d%%" % (len(block_math) - 1)
 
+    # $$ ... $$ display math
     protected = re.sub(
         r"\$\$\s*(.+?)\s*\$\$",
         _protect_block,
         text,
+        flags=re.DOTALL,
+    )
+
+    # \[ ... \] display math (LaTeX-style delimiters)
+    protected = re.sub(
+        r"\\\[\s*(.+?)\s*\\\]",
+        _protect_block,
+        protected,
         flags=re.DOTALL,
     )
 
@@ -94,10 +103,19 @@ def _protect_math(text: str) -> Tuple[str, list, list]:
         inline_math.append(inner)
         return "%%MATHINLINE%d%%" % (len(inline_math) - 1)
 
+    # $ ... $ inline math (single $, not preceded/followed by $)
     protected = re.sub(
         r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)",
         _protect_inline,
         protected,
+    )
+
+    # \( ... \) inline math (LaTeX-style delimiters)
+    protected = re.sub(
+        r"(?<!\\)\\\((.+?)\\\)",
+        _protect_inline,
+        protected,
+        flags=re.DOTALL,
     )
     return protected, block_math, inline_math
 

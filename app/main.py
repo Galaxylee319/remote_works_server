@@ -53,7 +53,7 @@ from app.pdf_utils import (
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("remote-works-server")
 
-app = FastAPI(title="Remote Works Server", version="2.0.0")
+app = FastAPI(title="远程工作区服务", version="2.0.0")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
@@ -68,6 +68,25 @@ STARTED_AT = time.time()
 TEXT_PREVIEW_LIMIT = 2 * 1024 * 1024  # 2 MiB
 
 
+def ensure_sync_links() -> None:
+    """Create configured external-dir symlinks under the served root."""
+    root = config["root_dir"]
+    for name, src in config.get("sync_dirs", {}).items():
+        link = os.path.join(root, name)
+        try:
+            if os.path.lexists(link):
+                if not os.path.isdir(link):
+                    logger.warning("Sync path exists but is not a directory: %s", link)
+                continue
+            if not os.path.isdir(src):
+                logger.warning("Sync source missing, skip link %s -> %s", link, src)
+                continue
+            os.symlink(src, link)
+            logger.info("Created sync link %s -> %s", link, src)
+        except OSError as e:
+            logger.warning("Could not create sync link %s -> %s: %s", link, src, e)
+
+
 # ---------------------------------------------------------------------------
 # Startup / Shutdown
 # ---------------------------------------------------------------------------
@@ -79,6 +98,8 @@ async def startup() -> None:
     root = config["root_dir"]
     if not os.path.isdir(root):
         logger.warning("Root directory missing: %s", root)
+    else:
+        ensure_sync_links()
     logger.info(
         "Started: root=%s cache=%s host=%s port=%s auth=%s",
         root,
@@ -262,7 +283,7 @@ async def browse_path(request: Request, rel_path: str, sort: str = Query("name")
             current_path=rel_path,
             breadcrumbs=_breadcrumbs(rel_path),
             sort=sort,
-            title="Files - Remote Works",
+            title="文件 · 远程工作区",
         ),
     )
 
@@ -314,14 +335,14 @@ async def pdf_alias(request: Request, rel_path: str):
 def _pdf_viewer(request: Request, info: dict):
     return templates.TemplateResponse(
         "pdf_viewer.html",
-        _context(request, entry=info, title=f"PDF - {info['name']}"),
+        _context(request, entry=info, title=f"PDF · {info['name']}"),
     )
 
 
 def _image_viewer(request: Request, info: dict):
     return templates.TemplateResponse(
         "image_viewer.html",
-        _context(request, entry=info, title=f"Image - {info['name']}"),
+        _context(request, entry=info, title=f"图片 · {info['name']}"),
     )
 
 
@@ -385,7 +406,7 @@ async def _markdown_page(request: Request, rel_path: str):
         if clean:
             title = clean
 
-    has_math = "$$" in text or "$" in text
+    has_math = "$$" in text or "$" in text or "\\[" in text or "\\(" in text
     pdf_available = get_cached_pdf(abs_path, text) is not None
     return templates.TemplateResponse(
         "markdown.html",
@@ -520,7 +541,7 @@ async def search_page(request: Request, q: str = Query("")):
     results = search_files(config["root_dir"], q) if q else []
     return templates.TemplateResponse(
         "search.html",
-        _context(request, query=q, results=results, title=f"Search: {q or 'All'}"),
+        _context(request, query=q, results=results, title=f"搜索：{q or '全部'}"),
     )
 
 
@@ -529,7 +550,7 @@ async def recent_page(request: Request, limit: int = Query(50, le=200)):
     files = get_recent_files(config["root_dir"], limit=limit)
     return templates.TemplateResponse(
         "recent.html",
-        _context(request, files=files, title="Recent Files"),
+        _context(request, files=files, title="最近更新"),
     )
 
 
@@ -566,7 +587,7 @@ async def _generate_pdf_response(request: Request, rel_path: str, force: bool = 
 
     try:
         html_body, _, has_mermaid = render_markdown(text, abs_path)
-        has_math = "$$" in text or "$" in text
+        has_math = "$$" in text or "$" in text or "\\[" in text or "\\(" in text
         full_html = build_pdf_html(html_body, info["name"], has_mermaid, has_math)
         pdf_path = await generate_pdf(abs_path, text, html_body, full_html)
     except Exception as e:

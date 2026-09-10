@@ -92,12 +92,16 @@ async def close_browser() -> None:
 def _localize_image_urls(full_html: str) -> str:
     """Rewrite /api/files/<rel> to file:// URLs so headless Chromium can load them."""
     root_dir = config["root_dir"]
+    allowed_real = [os.path.realpath(root_dir)]
+    for src in config.get("sync_dirs", {}).values():
+        real = os.path.realpath(src)
+        if os.path.isdir(real):
+            allowed_real.append(real)
 
     def _fix(m):
         rel = unquote(m.group(1))
         candidate = os.path.realpath(os.path.join(root_dir, rel.lstrip("/")))
-        root_real = os.path.realpath(root_dir)
-        if candidate != root_real and not candidate.startswith(root_real + os.sep):
+        if not any(candidate == r or candidate.startswith(r + os.sep) for r in allowed_real):
             return m.group(0)
         if os.path.isfile(candidate):
             return 'src="file://%s"' % candidate

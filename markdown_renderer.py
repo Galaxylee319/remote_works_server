@@ -73,7 +73,7 @@ def render_markdown(md_content, base_path=None):
     """Render markdown to HTML with LaTeX math protection.
 
     Strategy:
-    1. Protect $$...$$ blocks and $...$ inline math from markdown parsing
+    1. Protect $$...$$, \[...\] blocks and $...$, \(...\) inline math from markdown parsing
     2. Parse markdown normally
     3. Restore math as MathJax-compatible \\(...\\) and \\[...\\] format
     """
@@ -91,6 +91,14 @@ def render_markdown(md_content, base_path=None):
         flags=re.DOTALL,
     )
 
+    # Step 1b: Protect \[...\] block math
+    protected = re.sub(
+        r"\\\[\s*(.+?)\s*\\\]",
+        _protect_block,
+        protected,
+        flags=re.DOTALL,
+    )
+
     # Step 2: Protect $...$ inline math (single $, not preceded/followed by $)
     inline_math = []
 
@@ -105,6 +113,14 @@ def render_markdown(md_content, base_path=None):
         r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)",
         _protect_inline,
         protected,
+    )
+
+    # Step 2b: Protect \(...\) inline math
+    protected = re.sub(
+        r"(?<!\\)\\\((.+?)\\\)",
+        _protect_inline,
+        protected,
+        flags=re.DOTALL,
     )
 
     # Step 3: Render markdown

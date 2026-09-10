@@ -7,7 +7,8 @@
 ## 功能
 
 - 文件浏览：目录树、文件名搜索、最近更新、按名称/时间/大小排序
-- Markdown 实时渲染：GFM、LaTeX（MathJax）、Mermaid、代码高亮、TOC、脚注、任务列表
+- Markdown 实时渲染：GFM、LaTeX（MathJax，支持 `$$`/`$` 与 `\[`/`\(` 分隔符）、Mermaid、代码高亮、TOC、脚注、任务列表
+- 实时同步：通过 `sync_dirs` 把外部目录映射到服务根目录，可用符号链接或 `sync_external_dirs.py` 实时镜像，源目录内容变化即时可见
 - PDF 导出：Playwright/Chromium 服务端渲染，内容哈希缓存（文件修改后自动失效）
 - PDF / 图片 / 文本 / CSV / 日志在线预览
 - 目录打包下载（ZIP，带文件数与大小上限）
@@ -41,6 +42,7 @@ remote_works_server/
 ├── templates/ static/      # 移动端优先 UI
 ├── config.yaml             # 配置
 ├── run.py                  # 入口（systemd 与 start.sh 均指向它）
+├── sync_external_dirs.py   # 实时镜像 sync_dirs 外部目录的看护进程
 ├── install.sh / start.sh / rws.sh
 ├── remote-works-server.service
 └── server.py auth.py ...   # 【旧版遗留】v1 实现，已不再运行，仅存档
@@ -73,6 +75,7 @@ cd ~/remote_works_server
 | `pdf.cache` | PDF 内容哈希缓存 | `true` |
 | `search.exclude_dirs` | 搜索/最近更新跳过的目录 | `data, typeI_logs, .git` |
 | `zip.max_files/max_bytes` | 目录打包上限 | 5000 文件 / 2GiB |
+| `sync_dirs` | 外部目录实时同步映射（名字→绝对路径）；启动时会在 `root_dir` 下建符号链接，也可用 `sync_external_dirs.py` 做实时镜像 | 空 |
 
 ## 常用命令
 
@@ -81,6 +84,7 @@ cd ~/remote_works_server
 ./rws.sh logs [N]                      # 日志
 ./rws.sh set-password                  # 修改密码（所有会话失效）
 ./rws.sh test                          # 健康检查
+./sync_external_dirs.py &              # 实时镜像外部目录（可选，符号链接方案无需启动）
 ```
 
 等价 systemd 命令（服务为系统级）：
@@ -110,7 +114,7 @@ journalctl -u remote-works-server -f
 
 ## 安全说明
 
-- 所有文件访问经 `resolve_safe_path` 校验（realpath 必须位于 `root_dir` 内，符号链接逃逸被拒绝）。
+- 所有文件访问经 `resolve_safe_path` 校验（realpath 必须位于 `root_dir` 内，或位于 `sync_dirs` 明确允许的外部目录中；其他符号链接逃逸被拒绝）。
 - 服务只读，无上传/删除/重命名接口。
 - 密码为 bcrypt 哈希，随机会话 token 存内存，登录有滑动窗口限速。
 - 隐藏文件（`.` 开头）在浏览/搜索中默认不可见。
