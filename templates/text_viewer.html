@@ -21,7 +21,56 @@
   {% endif %}
 </div>
 
-<pre class="text-viewer">{{ content }}</pre>
+<div class="tail-bar">
+  <label class="tail-toggle">
+    <input type="checkbox" id="tail-auto"> 自动刷新（每 3 秒）
+  </label>
+  <span class="meta" id="tail-status"></span>
+</div>
+
+<pre class="text-viewer" id="text-body">{{ content }}</pre>
+
+<script>
+(function () {
+  var box = document.getElementById('tail-auto');
+  var body = document.getElementById('text-body');
+  var status = document.getElementById('tail-status');
+  if (!box || !body) return;
+  var KEY = 'rws-tail-auto';
+  var timer = null;
+  var path = {{ entry.path | tojson }};
+
+  function refresh() {
+    fetch('/api/files/' + path.split('/').map(encodeURIComponent).join('/'), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then(function (t) {
+        if (t !== body.textContent) {
+          var atBottom = (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 40);
+          body.textContent = t;
+          if (atBottom) window.scrollTo(0, document.body.scrollHeight);
+          status.textContent = '已更新 ' + new Date().toLocaleTimeString();
+        } else {
+          status.textContent = '无变化 · ' + new Date().toLocaleTimeString();
+        }
+      })
+      .catch(function (e) { status.textContent = '刷新失败（' + e.message + '）'; });
+  }
+  function setAuto(on) {
+    if (timer) { clearInterval(timer); timer = null; }
+    if (on) {
+      refresh();
+      timer = setInterval(refresh, 3000);
+      status.textContent = '自动刷新已开启';
+    } else {
+      status.textContent = '自动刷新已关闭';
+    }
+    localStorage.setItem(KEY, on ? '1' : '0');
+  }
+  box.checked = localStorage.getItem(KEY) === '1';
+  box.addEventListener('change', function () { setAuto(box.checked); });
+  if (box.checked) setAuto(true);
+})();
+</script>
 
 {% endblock %}
 

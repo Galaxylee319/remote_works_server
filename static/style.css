@@ -862,3 +862,15 @@ mjx-container {
 @media (max-width: 480px) {
   .grid-view { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 8px; }
 }
+
+/* === 日志实时 tail 与目录统计 === */
+.tail-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+  font-size: 0.85rem;
+}
+.tail-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.tail-toggle input { width: 16px; height: 16px; }
+#dir-stats { margin-left: auto; }

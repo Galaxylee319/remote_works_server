@@ -41,6 +41,7 @@ from app.file_browser import (
     resolve_safe_path,
     search_files,
     search_content,
+    get_recent_files,
 )
 from app.markdown_utils import render_markdown
 from app.pdf_utils import (
@@ -279,6 +280,15 @@ async def browse_path(request: Request, rel_path: str, sort: str = Query("name")
     else:
         entries.sort(key=lambda e: (not e["is_dir"], e["name"].lower()), reverse=reverse)
 
+    n_dirs = sum(1 for e in entries if e["is_dir"])
+    n_files = len(entries) - n_dirs
+    total_size = sum(e["size"] for e in entries if not e["is_dir"])
+    stats = {
+        "dirs": n_dirs,
+        "files": n_files,
+        "size_str": _human_size(total_size),
+    }
+
     return templates.TemplateResponse(
         "browse.html",
         _context(
@@ -287,9 +297,79 @@ async def browse_path(request: Request, rel_path: str, sort: str = Query("name")
             current_path=rel_path,
             breadcrumbs=_breadcrumbs(rel_path),
             sort=sort,
+            stats=stats,
             title="文件 · 远程工作区",
         ),
     )
+
+
+def _human_size(num: float) -> str:
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if abs(num) < 1024.0:
+            return f"{num:.0f} {unit}" if unit == "B" else f"{num:.1f} {unit}"
+        num /= 1024.0
+    return f"{num:.1f} PB"
+
+
+@app.get("/feed.xml")
+async def feed(request: Request, path: str = Query(""), limit: int = Query(50, ge=1, le=200)):
+    """「最近更新」RSS 2.0 订阅（需登录态；浏览器直接打开即可）。"""
+    sub = path.strip().strip("/")
+    root_real = os.path.realpath(config["root_dir"])
+    target = os.path.join(config["root_dir"], sub) if sub else config["root_dir"]
+    target_real = os.path.realpath(target)
+    if target_real != root_real and not target_real.startswith(root_real + os.sep):
+        raise HTTPException(status_code=400, detail="非法路径")
+    if not os.path.isdir(target_real):
+        raise HTTPException(status_code=404, detail="目录不存在")
+
+    files = get_recent_files(target_real if sub else config["root_dir"], limit=limit)
+    host = request.headers.get("host", "localhost")
+    base = f"{request.url.scheme}://{host}"
+    title = "远程工作区 · 最近更新" + (f"（{sub}）" if sub else "")
+
+    def esc(value) -> str:
+        return (
+            str(value)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+            .replace("'", "&apos;")
+        )
+
+    parts = []
+    for f in files:
+        rel = f["path"]
+        link = base + "/view/" + quote(rel)
+        dl = base + "/download/" + quote(rel)
+        desc = (
+            "<p><a href='" + link + "'>" + esc(rel) + "</a></p>"
+            "<p>" + esc(f.get("size_str", "")) + " · " + esc(f.get("mtime_str", ""))
+            + " · 类型 " + esc(f.get("type", "")) + "</p>"
+            "<p><a href='" + dl + "'>下载</a></p>"
+        )
+        pub = time.strftime("%a, %d %b %Y %H:%M:%S +0800", time.localtime(f.get("mtime", 0)))
+        parts.append(
+            "    <item>\n"
+            "      <title>" + esc(rel) + "</title>\n"
+            "      <link>" + esc(link) + "</link>\n"
+            '      <guid isPermaLink="false">' + esc(rel) + "</guid>\n"
+            "      <pubDate>" + pub + "</pubDate>\n"
+            "      <description>" + esc(desc) + "</description>\n"
+            "    </item>\n"
+        )
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<rss version="2.0">\n<channel>\n'
+        "  <title>" + esc(title) + "</title>\n"
+        "  <link>" + esc(base + "/recent") + "</link>\n"
+        "  <description>" + esc(config.get("server", {}).get("title", "远程工作区")) + " · 最近更新的文件</description>\n"
+        "  <lastBuildDate>" + time.strftime("%a, %d %b %Y %H:%M:%S +0800") + "</lastBuildDate>\n"
+        + "".join(parts)
+        + "</channel>\n</rss>\n"
+    )
+    return Response(content=xml, media_type="application/rss+xml; charset=utf-8")
 
 
 # ---------------------------------------------------------------------------

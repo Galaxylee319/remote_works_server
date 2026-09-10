@@ -29,6 +29,9 @@
   </span>
   <a href="javascript:location.reload()">刷新</a>
   <a href="#" id="view-toggle" title="切换 列表 / 网格 视图">网格视图</a>
+  {% if stats %}
+  <span class="meta" id="dir-stats">{{ stats.dirs }} 个目录 · {{ stats.files }} 个文件 · {{ stats.size_str }}</span>
+  {% endif %}
   {% if current_path and zip_enabled %}
   <a href="/api/download-zip/{{ current_path }}" class="zip-link">打包下载本目录</a>
   {% endif %}

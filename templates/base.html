@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <title>{% block title %}远程工作区{% endblock %}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="stylesheet" href="/static/style.css?v=4">
+<link rel="stylesheet" href="/static/style.css?v=5">
+<link rel="alternate" type="application/rss+xml" title="最近更新 · 远程工作区" href="/feed.xml">
 {% block head_extra %}{% endblock %}
 </head>
 <body>
@@ -13,6 +14,7 @@
   <div class="nav-links">
     <a href="/browse/">文件</a>
     <a href="/recent">最近更新</a>
+    <a href="/feed.xml">RSS</a>
     {% if authenticated %}
     <a href="/api/logout">退出登录</a>
     {% endif %}
