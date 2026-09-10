@@ -41,6 +41,7 @@ from app.file_browser import (
     resolve_safe_path,
     search_files,
     search_content,
+    sibling_media,
     get_recent_files,
 )
 from app.markdown_utils import render_markdown
@@ -394,7 +395,7 @@ async def view_file(request: Request, rel_path: str):
     if ftype == "pdf":
         return _pdf_viewer(request, info)
     if ftype == "image":
-        return _image_viewer(request, info)
+        return _image_viewer(request, info, abs_path)
     if ftype in ("text", "code", "data", "web", "ros", "rosbag", "mesh", "pointcloud"):
         return await _text_viewer(request, rel_path, info)
     return _generic_viewer(request, info)
@@ -423,10 +424,24 @@ def _pdf_viewer(request: Request, info: dict):
     )
 
 
-def _image_viewer(request: Request, info: dict):
+def _image_viewer(request: Request, info: dict, abs_path: str):
+    """单图查看页，附同目录兄弟图片以便上/下一张导航。"""
+    siblings = sibling_media(abs_path, config["root_dir"])
+    idx = next((i for i, s in enumerate(siblings) if s["path"] == info["path"]), -1)
+    prev_item = siblings[idx - 1] if idx > 0 else None
+    next_item = siblings[idx + 1] if 0 <= idx < len(siblings) - 1 else None
     return templates.TemplateResponse(
         "image_viewer.html",
-        _context(request, entry=info, title=f"图片 · {info['name']}"),
+        _context(
+            request,
+            entry=info,
+            siblings=siblings,
+            index=idx + 1 if idx >= 0 else 0,
+            total=len(siblings),
+            prev_item=prev_item,
+            next_item=next_item,
+            title=f"图片 · {info['name']}",
+        ),
     )
 
 

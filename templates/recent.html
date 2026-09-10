@@ -12,7 +12,7 @@
 <div class="file-list">
   {% for entry in files %}
   <div class="file-item">
-    <span class="icon">&#128196;</span>
+    <span class="icon">{{ entry.icon or ('&#128193;' if entry.is_dir else '&#128196;') }}</span>
     <div class="info">
       <div class="name">
         {% if entry.type == "markdown" or entry.type == "pdf" or entry.type == "image" or entry.preview %}

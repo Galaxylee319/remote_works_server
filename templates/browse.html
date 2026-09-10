@@ -41,7 +41,7 @@
   {% for entry in entries %}
     {% if entry.is_dir %}
       <div class="file-item dir">
-        <span class="icon">&#128193;</span>
+        <span class="icon">{{ entry.icon or ('&#128193;' if entry.is_dir else '&#128196;') }}</span>
         <div class="info">
           <div class="name"><a href="/browse/{{ entry.path }}/">{{ entry.name }}/</a></div>
           <div class="meta">目录</div>
@@ -54,7 +54,7 @@
       </div>
     {% else %}
       <div class="file-item">
-        <span class="icon">&#128196;</span>
+        <span class="icon">{{ entry.icon or ('&#128193;' if entry.is_dir else '&#128196;') }}</span>
         <div class="info">
           <div class="name">
             {% if entry.type == "markdown" or entry.type == "pdf" or entry.type == "image" or entry.type in ("text", "code", "data", "web", "ros", "rosbag") %}

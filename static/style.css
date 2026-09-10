@@ -874,3 +874,10 @@ mjx-container {
 .tail-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .tail-toggle input { width: 16px; height: 16px; }
 #dir-stats { margin-left: auto; }
+
+/* === 图片查看器导航 === */
+#nav-pos { margin: 0 6px; font-variant-numeric: tabular-nums; }
+.image-viewer img { max-width: 100%; height: auto; touch-action: pan-y; }
+@media (max-width: 480px) {
+  .action-bar #nav-pos { order: -1; }
+}

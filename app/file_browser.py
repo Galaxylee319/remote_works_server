@@ -147,6 +147,52 @@ def _matches_any(name: str, patterns: List[str]) -> bool:
     return False
 
 
+# 图片扩展名（由 EXT_MAP 派生，避免两处维护）
+IMAGE_EXTS = tuple(k for k, v in EXT_MAP.items() if v == "image")
+
+# 文件类型 → 图标（列表/搜索结果统一使用，避免每处硬编码）
+TYPE_ICONS = {
+    "directory": "\U0001F4C1",   # 📁
+    "markdown":  "\U0001F4DD",   # 📝
+    "pdf":       "\U0001F4D5",   # 📕
+    "image":     "\U0001F5BC",   # 🖼
+    "text":      "\U0001F4C4",   # 📄
+    "code":      "\u2328",       # ⌨
+    "data":      "\U0001F4CA",   # 📊
+    "archive":   "\U0001F4E6",   # 📦
+    "web":       "\U0001F310",   # 🌐
+    "ros":       "\U0001F916",   # 🤖
+    "rosbag":    "\U0001F916",
+    "video":     "\U0001F3AC",   # 🎬
+    "audio":     "\U0001F3B5",   # 🎵
+    "other":     "\U0001F4C4",
+}
+
+
+def icon_for(entry_type: str) -> str:
+    return TYPE_ICONS.get(entry_type, TYPE_ICONS["other"])
+
+
+def sibling_media(abs_path: str, root_dir: str, limit: int = 400) -> List[Dict]:
+    """同目录下的图片列表（按名称排序），用于查看器的上一张/下一张导航。"""
+    folder = os.path.dirname(abs_path)
+    try:
+        names = sorted(os.listdir(folder), key=lambda n: n.lower())
+    except OSError:
+        return []
+    items = []
+    for name in names:
+        full = os.path.join(folder, name)
+        if not os.path.isfile(full):
+            continue
+        if os.path.splitext(name)[1].lower() not in IMAGE_EXTS:
+            continue
+        items.append({"name": name, "path": os.path.relpath(full, root_dir), "abs": full})
+        if len(items) >= limit:
+            break
+    return items
+
+
 def _entry_dict(full: str, root_dir: str, is_dir: bool) -> Optional[Dict]:
     try:
         st = os.stat(full)
@@ -165,6 +211,7 @@ def _entry_dict(full: str, root_dir: str, is_dir: bool) -> Optional[Dict]:
         "extension": ext,
         "type": get_type_label(is_dir, ext),
         "preview": (not is_dir) and ext in PREVIEW_EXTS,
+        "icon": icon_for(get_type_label(is_dir, ext)),
     }
 
 

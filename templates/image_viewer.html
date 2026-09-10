@@ -11,11 +11,14 @@
 
 <div class="action-bar">
   <a href="/browse/">返回</a>
+  {% if prev_item %}<a href="/view/{{ prev_item.path }}" id="nav-prev" title="上一张（←）">← 上一张</a>{% endif %}
+  {% if total > 1 %}<span class="meta" id="nav-pos">{{ index }} / {{ total }}</span>{% endif %}
+  {% if next_item %}<a href="/view/{{ next_item.path }}" id="nav-next" title="下一张（→）">下一张 →</a>{% endif %}
   <a href="/download/{{ entry.path }}" download>下载图片</a>
 </div>
 
-<div class="image-viewer">
-  <img src="/api/files/{{ entry.path }}" alt="{{ entry.name }}">
+<div class="image-viewer" id="image-stage">
+  <img src="/api/files/{{ entry.path }}" alt="{{ entry.name }}" id="image-main">
 </div>
 
 <div class="action-bar" style="margin-top:12px;">
@@ -23,5 +26,35 @@
   <a href="/download/{{ entry.path }}" download>下载</a>
 </div>
 
-{% endblock %}
+{% if prev_item or next_item %}
+<script>
+(function () {
+  var prev = {{ (prev_item.path if prev_item else '') | tojson }};
+  var next = {{ (next_item.path if next_item else '') | tojson }};
+  // 预取相邻图片，翻页更顺滑
+  [prev, next].forEach(function (p) {
+    if (p) { var im = new Image(); im.src = '/api/files/' + p.split('/').map(encodeURIComponent).join('/'); }
+  });
+  // 键盘 ←/→
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowLeft' && prev) location.href = '/view/' + prev;
+    if (e.key === 'ArrowRight' && next) location.href = '/view/' + next;
+  });
+  // 手机左右滑动
+  var stage = document.getElementById('image-stage');
+  var x0 = null;
+  stage.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; }, { passive: true });
+  stage.addEventListener('touchend', function (e) {
+    if (x0 === null) return;
+    var dx = e.changedTouches[0].clientX - x0;
+    if (Math.abs(dx) > 60) {
+      if (dx > 0 && prev) location.href = '/view/' + prev;
+      if (dx < 0 && next) location.href = '/view/' + next;
+    }
+    x0 = null;
+  }, { passive: true });
+})();
+</script>
+{% endif %}
 
+{% endblock %}
