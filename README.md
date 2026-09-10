@@ -14,6 +14,7 @@
 - **文件类型图标**：目录/报告/PDF/图片/文本/代码/数据/压缩包/网页/ROS 分别显示不同图标
 - **网格视图**：图片目录可切换缩略图网格（`/thumb` 端点用 Pillow 生成并落盘缓存，
   懒加载、失败回退图标、localStorage 记忆偏好），列表/网格勾选状态互通
+- **目录导航抽屉**：从根到当前目录逐层列出子目录，当前分支高亮（点遮罩/ESC/× 关闭）
 - **多选打包下载**：勾选多个文件/目录 → 单个 ZIP（`POST /api/download-selected`，
   路径校验、父子去重、上限保护；表单提交，无 JS 亦可用）
 - **RSS 订阅**：`/feed.xml`（RSS 2.0，最近更新，支持 `?path=` 限定子目录）
@@ -163,13 +164,15 @@ MIT
 ## 测试
 
 ```bash
-# 1) 起一个免认证实例（或使用已登录会话）
-RWS_CONFIG=/tmp/rws_test.yaml ./venv/bin/python3 run.py &
+# 一键：自动起临时实例 → 跑全部测试 → 清理
+./tests/run_all.sh
 
-# 2) 运行回归测试
+# 或单独运行（需自备免认证实例）
+./venv/bin/python3 tests/test_mobile_layout.py      # 移动端布局：横向溢出/JS错误/资源失败
 ./venv/bin/python3 tests/test_browse_ui.py          # 列表/网格视图切换与缩略图
+./venv/bin/python3 tests/test_navpane_ui.py         # 目录导航抽屉
 ./venv/bin/python3 tests/test_selected_zip_ui.py    # 多选打包（含真实下载与 ZIP 校验）
-./tests/test_selected_zip_api.sh                    # 后端边界（路径穿越/空选/去重）
+./tests/test_selected_zip_api.sh                    # 多选打包后端边界（穿越/空选/去重）
 ```
 
 > 界面类改动**必须**用 Playwright 真实浏览器验证（曾出现「列表视图下网格仍显示」这类
