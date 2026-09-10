@@ -623,6 +623,83 @@ async def download_directory_zip(request: Request, rel_path: str):
         return JSONResponse(status_code=500, content={"error": f"打包失败: {e}"})
 
 
+@app.post("/api/download-selected")
+async def download_selected(request: Request):
+    """把勾选的多个文件/目录打包为一个 ZIP（表单 POST，浏览器直接下载）。"""
+    if not config["zip"].get("enabled", True):
+        return JSONResponse(status_code=501, content={"error": "ZIP 下载未启用"})
+
+    form = await request.form()
+    raw_paths = [str(v) for v in form.getlist("paths")][:1000]
+    if not raw_paths:
+        return JSONResponse(status_code=400, content={"error": "未选择任何文件"})
+
+    root = config["root_dir"]
+    resolved = []
+    for rel in raw_paths:
+        abs_p, err = resolve_safe_path(root, rel)
+        if err or not abs_p:
+            continue
+        if os.path.exists(abs_p):
+            resolved.append(abs_p)
+    if not resolved:
+        return JSONResponse(status_code=400, content={"error": "所选路径无效"})
+
+    # 去重：父目录已选中的，其子项不再重复打包（排序后父在前）
+    resolved = sorted(set(resolved))
+    kept = []
+    for pth in resolved:
+        if any(pth == k or pth.startswith(k.rstrip(os.sep) + os.sep) for k in kept):
+            continue
+        kept.append(pth)
+
+    import zipfile
+
+    max_files = config["zip"].get("max_files", 5000)
+    max_bytes = config["zip"].get("max_bytes", 2 * 1024 ** 3)
+    fd, tmp_path = tempfile.mkstemp(suffix=".zip", dir=config["cache_dir"])
+    os.close(fd)
+    try:
+        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            count = 0
+            total = 0
+            for target in kept:
+                if os.path.isfile(target):
+                    size = os.path.getsize(target)
+                    if count >= max_files or total + size > max_bytes:
+                        return JSONResponse(status_code=413, content={"error": "所选内容超出打包限制"})
+                    zf.write(target, os.path.relpath(target, root))
+                    count += 1
+                    total += size
+                    continue
+                for dirpath, dirnames, filenames in os.walk(target):
+                    dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+                    for name in filenames:
+                        if name.startswith("."):
+                            continue
+                        full = os.path.join(dirpath, name)
+                        try:
+                            size = os.path.getsize(full)
+                        except OSError:
+                            continue
+                        if count >= max_files or total + size > max_bytes:
+                            return JSONResponse(status_code=413, content={"error": "所选内容超出打包限制"})
+                        zf.write(full, os.path.relpath(full, root))
+                        count += 1
+                        total += size
+        stamp = time.strftime("%Y%m%d-%H%M")
+        return FileResponse(
+            tmp_path,
+            media_type="application/zip",
+            filename=f"remote-works-{stamp}.zip",
+            background=BackgroundTask(_remove_file, tmp_path),
+        )
+    except Exception as exc:
+        _remove_file(tmp_path)
+        logger.exception("Selected zip failed")
+        return JSONResponse(status_code=500, content={"error": f"打包失败: {exc}"})
+
+
 def _remove_file(path: str) -> None:
     try:
         os.remove(path)

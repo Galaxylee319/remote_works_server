@@ -37,10 +37,13 @@
   {% endif %}
 </div>
 
+<form method="post" action="/api/download-selected" id="zip-form">
+
 <div class="file-list" id="file-list">
   {% for entry in entries %}
     {% if entry.is_dir %}
       <div class="file-item dir">
+        <label class="pick"><input type="checkbox" name="paths" value="{{ entry.path }}" class="pick-box"></label>
         <span class="icon">{{ entry.icon or ('&#128193;' if entry.is_dir else '&#128196;') }}</span>
         <div class="info">
           <div class="name"><a href="/browse/{{ entry.path }}/">{{ entry.name }}/</a></div>
@@ -54,6 +57,7 @@
       </div>
     {% else %}
       <div class="file-item">
+        <label class="pick"><input type="checkbox" name="paths" value="{{ entry.path }}" class="pick-box"></label>
         <span class="icon">{{ entry.icon or ('&#128193;' if entry.is_dir else '&#128196;') }}</span>
         <div class="info">
           <div class="name">
@@ -79,6 +83,7 @@
 <div class="grid-view" id="grid-view" hidden>
   {% for entry in entries %}
   <div class="grid-item">
+    <label class="pick grid-pick"><input type="checkbox" name="paths" value="{{ entry.path }}" class="pick-box"></label>
     <a class="grid-link" href="{{ '/browse/' + entry.path + '/' if entry.is_dir else ('/view/' + entry.path if entry.type in ('image','markdown','pdf','text','code','data','web','ros','rosbag') else '/download/' + entry.path) }}">
       {% if entry.type == 'image' and not entry.is_dir %}
       <img class="grid-thumb" src="/thumb/{{ entry.path }}?w=320" alt="{{ entry.name }}" loading="lazy" decoding="async">
@@ -91,6 +96,14 @@
   </div>
   {% endfor %}
 </div>
+
+<div class="select-bar" id="select-bar" hidden>
+  <span id="select-count">已选 0 项</span>
+  <button type="submit" id="zip-submit">打包下载</button>
+  <button type="button" id="select-clear">清除</button>
+</div>
+
+</form>
 
 <script>
 (function () {
@@ -115,13 +128,43 @@
     });
   });
 
+  // ── 多选打包 ──────────────────────────────────────────────
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.pick-box'));
+  var bar = document.getElementById('select-bar');
+  var countEl = document.getElementById('select-count');
+  var clearBtn = document.getElementById('select-clear');
+  var form = document.getElementById('zip-form');
+
+  function selectedValues() {
+    return boxes.filter(function (b) { return b.checked; }).map(function (b) { return b.value; });
+  }
+  function syncSelection() {
+    // 列表/网格两套勾选框按 value 同步，避免重复提交同一路径
+    var chosen = {};
+    selectedValues().forEach(function (v) { chosen[v] = 1; });
+    boxes.forEach(function (b) { b.checked = !!chosen[b.value]; });
+    var n = Object.keys(chosen).length;
+    if (countEl) countEl.textContent = '已选 ' + n + ' 项';
+    if (bar) bar.hidden = n === 0;
+  }
+  boxes.forEach(function (b) { b.addEventListener('change', syncSelection); });
+  if (clearBtn) clearBtn.addEventListener('click', function () {
+    boxes.forEach(function (b) { b.checked = false; });
+    syncSelection();
+  });
+  if (form) form.addEventListener('submit', function (e) {
+    if (selectedValues().length === 0) { e.preventDefault(); alert('请先勾选要打包的文件或目录'); }
+  });
+
   apply(localStorage.getItem(KEY) || 'list');
   btn.addEventListener('click', function (e) {
     e.preventDefault();
     var next = gridView.hidden ? 'grid' : 'list';
     localStorage.setItem(KEY, next);
     apply(next);
+    syncSelection();
   });
+  syncSelection();
 })();
 </script>
 
