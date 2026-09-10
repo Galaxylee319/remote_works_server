@@ -28,6 +28,7 @@
     <a href="?sort=-size" class="{{ 'active' if sort == '-size' else '' }}">大小</a>
   </span>
   <a href="javascript:location.reload()">刷新</a>
+  <a href="#" id="view-toggle" title="切换 列表 / 网格 视图">网格视图</a>
   {% if current_path and zip_enabled %}
   <a href="/api/download-zip/{{ current_path }}" class="zip-link">打包下载本目录</a>
   {% endif %}
@@ -71,6 +72,55 @@
     {% endif %}
   {% endfor %}
 </div>
+
+<div class="grid-view" id="grid-view" hidden>
+  {% for entry in entries %}
+  <div class="grid-item">
+    <a class="grid-link" href="{{ '/browse/' + entry.path + '/' if entry.is_dir else ('/view/' + entry.path if entry.type in ('image','markdown','pdf','text','code','data','web','ros','rosbag') else '/download/' + entry.path) }}">
+      {% if entry.type == 'image' and not entry.is_dir %}
+      <img class="grid-thumb" src="/thumb/{{ entry.path }}?w=320" alt="{{ entry.name }}" loading="lazy" decoding="async">
+      {% else %}
+      <div class="grid-thumb grid-icon">{{ '&#128193;'|safe if entry.is_dir else '&#128196;'|safe }}</div>
+      {% endif %}
+      <div class="grid-name">{{ entry.name }}</div>
+    </a>
+    <div class="grid-meta">{{ '目录' if entry.is_dir else entry.size_str }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+(function () {
+  var listView = document.getElementById('file-list');
+  var gridView = document.getElementById('grid-view');
+  var btn = document.getElementById('view-toggle');
+  if (!listView || !gridView || !btn) return;
+  var KEY = 'rws-view-mode';
+  function apply(mode) {
+    var grid = mode === 'grid';
+    gridView.hidden = !grid;
+    listView.hidden = grid;
+    btn.textContent = grid ? '列表视图' : '网格视图';
+  }
+  // 缩略图加载失败（后端未启用 /thumb、图片损坏）时回退为文件图标
+  gridView.querySelectorAll('img.grid-thumb').forEach(function (img) {
+    img.addEventListener('error', function () {
+      var d = document.createElement('div');
+      d.className = 'grid-thumb grid-icon';
+      d.textContent = '\u{1F4C4}';
+      img.replaceWith(d);
+    });
+  });
+
+  apply(localStorage.getItem(KEY) || 'list');
+  btn.addEventListener('click', function (e) {
+    e.preventDefault();
+    var next = gridView.hidden ? 'grid' : 'list';
+    localStorage.setItem(KEY, next);
+    apply(next);
+  });
+})();
+</script>
 
 {% endblock %}
 

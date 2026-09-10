@@ -1,6 +1,7 @@
 """Remote Works Server v2 — FastAPI application."""
 from __future__ import annotations
 
+import hashlib
 import logging
 import mimetypes
 import os
@@ -39,6 +40,7 @@ from app.file_browser import (
     list_directory,
     resolve_safe_path,
     search_files,
+    search_content,
 )
 from app.markdown_utils import render_markdown
 from app.pdf_utils import (
@@ -52,6 +54,8 @@ from app.pdf_utils import (
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("remote-works-server")
+
+THUMB_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff"}
 
 app = FastAPI(title="远程工作区服务", version="2.0.0")
 
@@ -536,12 +540,20 @@ def _remove_file(path: str) -> None:
 # ---------------------------------------------------------------------------
 
 @app.get("/search", response_class=HTMLResponse)
-async def search_page(request: Request, q: str = Query("")):
+async def search_page(request: Request, q: str = Query(""), mode: str = Query("name")):
+    """文件名检索（mode=name）或正文全文检索（mode=content）。"""
     q = q.strip()
-    results = search_files(config["root_dir"], q) if q else []
+    mode = "content" if mode == "content" else "name"
+    if not q:
+        results = []
+    elif mode == "content":
+        results = search_content(config["root_dir"], q)
+    else:
+        results = search_files(config["root_dir"], q)
     return templates.TemplateResponse(
         "search.html",
-        _context(request, query=q, results=results, title=f"搜索：{q or '全部'}"),
+        _context(request, query=q, mode=mode, results=results,
+                 title=f"搜索：{q or '全部'}"),
     )
 
 
@@ -555,8 +567,49 @@ async def recent_page(request: Request, limit: int = Query(50, le=200)):
 
 
 @app.get("/api/search")
-async def api_search(request: Request, q: str = Query(..., min_length=1)):
-    return {"results": search_files(config["root_dir"], q.strip())}
+async def api_search(request: Request, q: str = Query(..., min_length=1), mode: str = Query("name")):
+    q = q.strip()
+    if mode == "content":
+        return {"mode": "content", "results": search_content(config["root_dir"], q)}
+    return {"mode": "name", "results": search_files(config["root_dir"], q)}
+
+
+@app.get("/thumb/{rel_path:path}")
+async def thumbnail(request: Request, rel_path: str, w: int = Query(360, ge=64, le=1280)):
+    """按需生成并缓存图片缩略图（磁盘缓存，借鉴 filebrowser/copyparty 的网格视图）。"""
+    abs_path, err_resp = _resolve_or_error(request, rel_path, need_file=True)
+    if err_resp is not None:
+        return err_resp
+    if os.path.splitext(abs_path)[1].lower() not in THUMB_EXTS:
+        raise HTTPException(status_code=400, detail="该文件不是可生成缩略图的图片")
+    try:
+        st = os.stat(abs_path)
+    except OSError:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    thumbs_dir = os.path.join(config["cache_dir"], "thumbs")
+    os.makedirs(thumbs_dir, exist_ok=True)
+    key = hashlib.sha1(
+        f"{abs_path}|{st.st_mtime_ns}|{st.st_size}|{w}".encode("utf-8")
+    ).hexdigest()[:32]
+    out_path = os.path.join(thumbs_dir, key + ".jpg")
+    if not os.path.exists(out_path):
+        try:
+            from PIL import Image, ImageOps
+
+            with Image.open(abs_path) as im:
+                im = ImageOps.exif_transpose(im)
+                im.thumbnail((w, w * 4))
+                if im.mode not in ("RGB", "L"):
+                    im = im.convert("RGB")
+                im.save(out_path, "JPEG", quality=82, optimize=True)
+        except Exception as exc:  # 损坏/不支持格式
+            logger.warning("thumbnail failed for %s: %s", abs_path, exc)
+            raise HTTPException(status_code=415, detail="无法生成缩略图")
+    return FileResponse(
+        out_path,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=604800"},
+    )
 
 
 @app.get("/api/recent")

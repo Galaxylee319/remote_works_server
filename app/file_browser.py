@@ -246,6 +246,116 @@ def search_files(root_dir: str, query: str, limit: Optional[int] = None) -> List
     return results[:limit]
 
 
+# ── 全文内容检索（借鉴 Pagefind / copyparty 的静态检索思路）────────────────────
+# 说明：中文无需分词——直接用大小写不敏感的子串匹配即可；文本按 (mtime, size)
+# 缓存于内存，重复检索只需重读变更过的文件。
+
+_TEXT_CACHE: Dict[str, Tuple[float, int, str]] = {}
+_TEXT_CACHE_LIMIT = 3000
+
+DEFAULT_TEXT_EXTS = (
+    ".md", ".markdown", ".txt", ".tex", ".rst", ".org",
+    ".csv", ".tsv", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg",
+    ".py", ".sh", ".bash", ".js", ".ts", ".html", ".css",
+    ".bib", ".log", ".mmd", ".drawio", ".sql",
+)
+
+
+def _text_extensions():
+    exts = config.get("search", {}).get("content_extensions") or DEFAULT_TEXT_EXTS
+    return {str(e).lower() for e in exts}
+
+
+def _read_text_cached(full: str, st, max_bytes: int):
+    hit = _TEXT_CACHE.get(full)
+    if hit is not None and hit[0] == st.st_mtime and hit[1] == st.st_size:
+        return hit[2]
+    try:
+        with open(full, "r", encoding="utf-8", errors="replace") as fh:
+            text = fh.read(max_bytes)
+    except OSError:
+        return None
+    if len(_TEXT_CACHE) >= _TEXT_CACHE_LIMIT:
+        _TEXT_CACHE.clear()
+    _TEXT_CACHE[full] = (st.st_mtime, st.st_size, text)
+    return text
+
+
+def search_content(
+    root_dir: str,
+    query: str,
+    limit_files: Optional[int] = None,
+    max_per_file: int = 3,
+    context: int = 70,
+) -> List[Dict]:
+    """在文本类文件正文中检索（大小写不敏感子串），返回带上下文的命中片段。
+
+    结果按「命中次数」降序、其次按修改时间降序排列。
+    """
+    cfg = config.get("search", {})
+    if limit_files is None:
+        limit_files = cfg.get("content_max_files", 60)
+    max_bytes = int(cfg.get("content_max_file_mb", 2) * 1024 * 1024)
+    exts = _text_extensions()
+    q = query.strip()
+    if not q:
+        return []
+    ql = q.lower()
+
+    results = []
+    for full, rel, _ in _walk_filtered(root_dir):
+        if os.path.splitext(full)[1].lower() not in exts:
+            continue
+        try:
+            st = os.stat(full)
+        except OSError:
+            continue
+        if st.st_size > max_bytes:
+            continue
+        text = _read_text_cached(full, st, max_bytes)
+        if not text:
+            continue
+        low = text.lower()
+        total = low.count(ql)
+        if total == 0:
+            continue
+        hits = []
+        pos = 0
+        while len(hits) < max_per_file:
+            pos = low.find(ql, pos)
+            if pos < 0:
+                break
+            line_no = low.count("\n", 0, pos) + 1
+            line_start = low.rfind("\n", 0, pos) + 1
+            line_end = low.find("\n", pos)
+            if line_end < 0:
+                line_end = len(text)
+            raw = text[line_start:line_end]
+            off = pos - line_start
+            start = max(0, off - context)
+            end = min(len(raw), off + len(q) + context)
+            hits.append(
+                {
+                    "line": line_no,
+                    "before": ("…" if start > 0 else "") + raw[start:off].lstrip(),
+                    "match": raw[off : off + len(q)],
+                    "after": raw[off + len(q) : end].rstrip() + ("…" if end < len(raw) else ""),
+                }
+            )
+            pos += len(q)
+        entry = _entry_dict(full, root_dir, False)
+        if entry is None:
+            continue
+        entry = dict(entry)
+        entry["count"] = total
+        entry["hits"] = hits
+        entry["ext"] = os.path.splitext(full)[1].lower().lstrip(".")
+        results.append(entry)
+
+    results.sort(key=lambda e: (-e["count"], -e.get("mtime", 0)))
+    return results[:limit_files]
+
+
 def get_recent_files(root_dir: str, limit: int = 20) -> List[Dict]:
     """Most recently modified files, newest first."""
     recent = []
