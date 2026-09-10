@@ -38,6 +38,8 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;          /* 窄屏时导航换行，而不是撑破视口 */
+  row-gap: 6px;
   position: sticky;
   top: 0;
   z-index: 100;
@@ -621,6 +623,9 @@ mjx-container {
 @media (max-width: 480px) {
   header { padding: 10px 12px; }
   header .logo { font-size: 1rem; }
+  header .nav-links { gap: 6px; }
+  header .nav-links a,
+  header .nav-links button { padding: 4px 8px; font-size: 0.78rem; }
   main { padding: 10px; }
 
   .file-item { padding: 10px 12px; gap: 8px; }
@@ -655,6 +660,16 @@ mjx-container {
   overflow-x: auto;
   overflow-y: hidden;
   max-width: 100%;
+}
+
+/* 行内公式（$...$，无 display="true"）默认是 inline 元素，而 max-width 对 inline 不生效，
+   长公式会直接撑破页面（手机上尤其明显）。改为 inline-block 即可被约束，
+   超出部分在公式内部横向滚动，不影响整页布局。 */
+mjx-container:not([display="true"]) {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 /* === TOC panel === */
