@@ -199,6 +199,48 @@ def sibling_media(abs_path: str, root_dir: str, limit: int = 400) -> List[Dict]:
     return sibling_files(abs_path, root_dir, IMAGE_EXTS, limit)
 
 
+def build_nav_tree(root_dir: str, current_rel: str, max_children: int = 60) -> List[Dict]:
+    """构建「目录导航」骨架：从根到当前目录，逐层列出其子目录（当前分支标记）。
+
+    只列目录、每层上限 max_children，避免深层大目录把侧栏撑爆。
+    """
+    current_rel = (current_rel or "").strip("/")
+    target = os.path.join(root_dir, current_rel) if current_rel else root_dir
+    if os.path.isfile(target):
+        current_rel = os.path.dirname(current_rel)
+
+    def on_branch(rel: str) -> bool:
+        return rel == current_rel or current_rel.startswith(rel + "/")
+
+    parts = [x for x in current_rel.split("/") if x]
+    levels = []
+    chain = [""] + ["/".join(parts[: i + 1]) for i in range(len(parts))]
+    for level_rel in chain:
+        abs_level = os.path.join(root_dir, level_rel) if level_rel else root_dir
+        try:
+            names = sorted(os.listdir(abs_level), key=lambda n: n.lower())
+        except OSError:
+            continue
+        children = []
+        for name in names:
+            if name.startswith("."):
+                continue
+            if not os.path.isdir(os.path.join(abs_level, name)):
+                continue
+            rel = (level_rel + "/" + name).lstrip("/") if level_rel else name
+            children.append({"name": name, "path": rel, "on_branch": on_branch(rel)})
+            if len(children) >= max_children:
+                break
+        levels.append(
+            {
+                "path": level_rel,
+                "name": os.path.basename(abs_level) or "根目录",
+                "children": children,
+            }
+        )
+    return levels
+
+
 def _entry_dict(full: str, root_dir: str, is_dir: bool) -> Optional[Dict]:
     try:
         st = os.stat(full)

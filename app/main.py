@@ -34,6 +34,7 @@ from app.auth import (
 )
 from app.config import config
 from app.file_browser import (
+    build_nav_tree,
     get_file_info,
     get_recent_files,
     human_size,
@@ -282,6 +283,8 @@ async def browse_path(request: Request, rel_path: str, sort: str = Query("name")
     else:
         entries.sort(key=lambda e: (not e["is_dir"], e["name"].lower()), reverse=reverse)
 
+    nav_levels = build_nav_tree(config["root_dir"], rel_path)
+
     n_dirs = sum(1 for e in entries if e["is_dir"])
     n_files = len(entries) - n_dirs
     total_size = sum(e["size"] for e in entries if not e["is_dir"])
@@ -300,6 +303,7 @@ async def browse_path(request: Request, rel_path: str, sort: str = Query("name")
             breadcrumbs=_breadcrumbs(rel_path),
             sort=sort,
             stats=stats,
+            nav_levels=nav_levels,
             title="文件 · 远程工作区",
         ),
     )

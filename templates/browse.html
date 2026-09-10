@@ -29,6 +29,7 @@
   </span>
   <a href="javascript:location.reload()">刷新</a>
   <a href="#" id="view-toggle" title="切换 列表 / 网格 视图">网格视图</a>
+  <a href="#" id="navpane-toggle" title="打开目录导航">目录导航</a>
   {% if stats %}
   <span class="meta" id="dir-stats">{{ stats.dirs }} 个目录 · {{ stats.files }} 个文件 · {{ stats.size_str }}</span>
   {% endif %}
@@ -104,6 +105,50 @@
 </div>
 
 </form>
+
+{% if nav_levels %}
+<div class="navpane-backdrop" id="navpane-backdrop" hidden></div>
+<aside class="navpane" id="navpane" aria-hidden="true">
+  <div class="navpane-head">
+    <span>目录导航</span>
+    <button type="button" id="navpane-close" title="关闭">×</button>
+  </div>
+  {% for lvl in nav_levels %}
+  <div class="nav-level">
+    <div class="nav-level-name">{{ lvl.name }}</div>
+    <ul>
+      {% for c in lvl.children %}
+      <li class="{{ 'on-branch' if c.on_branch else '' }}">
+        <a href="/browse/{{ c.path }}/">{{ c.name }}/</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</aside>
+
+<script>
+(function () {
+  var pane = document.getElementById('navpane');
+  var backdrop = document.getElementById('navpane-backdrop');
+  var openBtn = document.getElementById('navpane-toggle');
+  var closeBtn = document.getElementById('navpane-close');
+  if (!pane || !openBtn) return;
+  function open() {
+    pane.classList.add('open'); pane.setAttribute('aria-hidden', 'false');
+    if (backdrop) backdrop.hidden = false;
+  }
+  function close() {
+    pane.classList.remove('open'); pane.setAttribute('aria-hidden', 'true');
+    if (backdrop) backdrop.hidden = true;
+  }
+  openBtn.addEventListener('click', function (e) { e.preventDefault(); open(); });
+  if (closeBtn) closeBtn.addEventListener('click', close);
+  if (backdrop) backdrop.addEventListener('click', close);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+})();
+</script>
+{% endif %}
 
 <script>
 (function () {
