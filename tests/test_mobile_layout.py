@@ -32,12 +32,15 @@ with sync_playwright() as p:
     b = p.chromium.launch(args=["--no-sandbox"])
     ctx = b.new_context(viewport={"width": 390, "height": 844}, user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)")
     page = ctx.new_page()
-    console_errors, failed = [], []
+    console_errors, failed, bad_status = [], [], []
     page.on("console", lambda m: console_errors.append(m.text) if m.type == "error" else None)
     page.on("requestfailed", lambda r: failed.append(f"{r.url} {r.failure}"))
+    # 404/500 是「成功响应」不会触发 requestfailed，需单独监听状态码
+    # （曾因此漏掉 /favicon.ico 404）
+    page.on("response", lambda r: bad_status.append(f"{r.status} {r.url}") if r.status >= 400 else None)
 
     for name, path in PAGES:
-        console_errors.clear(); failed.clear()
+        console_errors.clear(); failed.clear(); bad_status.clear()
         try:
             page.goto(BASE + path, wait_until="networkidle", timeout=30000)
         except Exception as e:
@@ -50,6 +53,10 @@ with sync_playwright() as p:
         if over > 2: tag.append(f"横向溢出 {over}px")
         if console_errors: tag.append(f"JS错误 {len(console_errors)}: {console_errors[0][:60]}")
         if failed: tag.append(f"资源失败 {len(failed)}: {failed[0][:60]}")
+        # favicon 等非关键资源单独列出，不直接判失败
+        crit = [b for b in bad_status if '/favicon.ico' not in b]
+        if crit: tag.append(f"HTTP错误 {len(crit)}: {crit[0][:60]}")
+        elif bad_status: tag.append(f"favicon缺失 {bad_status[0][:40]}")
         print(f"  {'✘' if tag else '✔'} {name:<16} {' | '.join(tag) if tag else 'OK'}")
         if tag: issues.append(f"{name}: {' | '.join(tag)}")
     b.close()

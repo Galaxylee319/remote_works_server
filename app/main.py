@@ -937,6 +937,12 @@ async def pdf_post(request: Request, rel_path: str):
 # Status / health
 # ---------------------------------------------------------------------------
 
+@app.get("/favicon.ico")
+async def favicon():
+    """浏览器默认请求 /favicon.ico；此前无路由导致 404，这里指向站内图标。"""
+    return RedirectResponse(url="/static/favicon.svg", status_code=307)
+
+
 @app.get("/api/health")
 async def health():
     root = config["root_dir"]

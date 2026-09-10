@@ -26,6 +26,7 @@
 - **文本/日志实时 tail**：自动刷新开关（3 秒），滚动到底自动跟随
 - PDF 导出：Playwright/Chromium 服务端渲染，内容哈希缓存（文件修改后自动失效）
 - PDF / 图片 / 文本 / CSV / 日志在线预览
+- 站点图标（favicon）：`/favicon.ico` → `/static/favicon.svg`（此前缺失导致 404）
 
 ### 运维与安全
 - 实时同步：通过 `sync_dirs` 把外部目录映射到服务根目录，可用符号链接或 `sync_external_dirs.py` 实时镜像，源目录内容变化即时可见
