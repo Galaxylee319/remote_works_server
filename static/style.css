@@ -939,6 +939,7 @@ mjx-container:not([display="true"]) {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  overflow: hidden;   /* 兜底：任何子元素都不得撑破卡片 */
 }
 .doc-nav-head {
   display: flex;
@@ -950,25 +951,47 @@ mjx-container:not([display="true"]) {
 }
 .doc-nav-pager {
   display: flex;
+  flex-wrap: wrap;              /* 窄屏时上下两行，而不是挤在一行 */
   justify-content: space-between;
-  gap: 10px;
+  gap: 6px 12px;
   font-size: 0.85rem;
   padding: 6px 0;
   border-bottom: 1px dashed var(--border);
 }
-.doc-nav-pager a { text-decoration: none; color: var(--accent); }
+/* 关键：文件名常是 Phase_VDT13C_Offline_Effect_xx 这类长英文标识符，
+   下划线不是断行点 → 不允行内换行就会撑破容器（曾导致「堆叠混乱」）。
+   min-width:0 让 flex 子项可收缩，overflow-wrap 允许在任意位置断行。 */
+.doc-nav-pager a,
+.doc-nav-pager span {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.doc-nav-pager a {
+  flex: 1 1 auto;
+  text-decoration: none;
+  color: var(--accent);
+}
+/* 用 grid 取代 CSS 多列：多列布局在长文件名下高度不均、观感凌乱 */
 .doc-nav-list {
   list-style: none;
   margin: 8px 0 0;
   padding: 0;
   font-size: 0.84rem;
-  column-count: 2;
-  column-gap: 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 2px 18px;
 }
-.doc-nav-list li { padding: 2px 0; break-inside: avoid; }
-.doc-nav-list a { color: var(--text-secondary); text-decoration: none; }
+.doc-nav-list li { padding: 2px 0; min-width: 0; }
+.doc-nav-list a {
+  display: block;
+  color: var(--text-secondary);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .doc-nav-list a:hover { color: var(--accent); text-decoration: underline; }
-@media (max-width: 560px) { .doc-nav-list { column-count: 1; } }
 
 /* === 目录导航抽屉（借鉴 copyparty navpane）=== */
 .navpane {

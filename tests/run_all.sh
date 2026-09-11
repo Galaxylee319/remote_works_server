@@ -36,6 +36,7 @@ run() { echo "── $1"; shift; "$@" >/tmp/_t.log 2>&1 && echo "   ✔ 通过" 
 run "移动端布局（12 页）"      ./venv/bin/python3 tests/test_mobile_layout.py "$BASE"
 run "浏览页 网格/列表视图"      ./venv/bin/python3 tests/test_browse_ui.py "$BASE"
 run "目录导航抽屉"             ./venv/bin/python3 tests/test_navpane_ui.py "$BASE"
+run "同目录文档区块布局"        ./venv/bin/python3 tests/test_docnav_layout.py "$BASE"
 run "多选打包（UI + 真实下载）" ./venv/bin/python3 tests/test_selected_zip_ui.py "$BASE"
 run "多选打包（后端边界）"      ./tests/test_selected_zip_api.sh "$BASE"
 

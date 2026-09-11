@@ -34,7 +34,10 @@ with sync_playwright() as p:
     page = ctx.new_page()
     console_errors, failed, bad_status = [], [], []
     page.on("console", lambda m: console_errors.append(m.text) if m.type == "error" else None)
-    page.on("requestfailed", lambda r: failed.append(f"{r.url} {r.failure}"))
+    # net::ERR_ABORTED 是浏览器主动中止（如 Range 请求被后续请求取代、导航离开），
+    # 不代表资源真的加载失败；真实失败（如 ERR_CONNECTION_*）才计入。
+    page.on("requestfailed", lambda r: failed.append(f"{r.url} {r.failure}")
+            if "ERR_ABORTED" not in str(r.failure) else None)
     # 404/500 是「成功响应」不会触发 requestfailed，需单独监听状态码
     # （曾因此漏掉 /favicon.ico 404）
     page.on("response", lambda r: bad_status.append(f"{r.status} {r.url}") if r.status >= 400 else None)
@@ -52,7 +55,7 @@ with sync_playwright() as p:
         tag = []
         if over > 2: tag.append(f"横向溢出 {over}px")
         if console_errors: tag.append(f"JS错误 {len(console_errors)}: {console_errors[0][:60]}")
-        if failed: tag.append(f"资源失败 {len(failed)}: {failed[0][:60]}")
+        if failed: tag.append(f"资源失败 {len(failed)}: {failed[0][:90]}")
         # favicon 等非关键资源单独列出，不直接判失败
         crit = [b for b in bad_status if '/favicon.ico' not in b]
         if crit: tag.append(f"HTTP错误 {len(crit)}: {crit[0][:60]}")
