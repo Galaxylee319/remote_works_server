@@ -868,7 +868,8 @@ async def api_recent(request: Request, limit: int = Query(30, le=200)):
 # PDF generation
 # ---------------------------------------------------------------------------
 
-async def _generate_pdf_response(request: Request, rel_path: str, force: bool = False):
+async def _generate_pdf_response(request: Request, rel_path: str, force: bool = False,
+                                inline: bool = False):
     abs_path, err_resp = _resolve_or_error(request, rel_path, need_file=True)
     if err_resp is not None:
         return err_resp
@@ -885,6 +886,7 @@ async def _generate_pdf_response(request: Request, rel_path: str, force: bool = 
     if force:
         invalidate_pdf_cache(abs_path, text)
 
+    t_pdf = time.time()
     try:
         html_body, _, has_mermaid = render_markdown(text, abs_path)
         has_math = "$$" in text or "$" in text or "\\[" in text or "\\(" in text
@@ -905,13 +907,23 @@ async def _generate_pdf_response(request: Request, rel_path: str, force: bool = 
 
     filename = os.path.splitext(info["name"])[0] + ".pdf"
     ascii_name = filename.encode("ascii", "replace").decode("ascii")
+    # 默认 attachment（按钮语义是「下载 PDF」）：手机浏览器对内嵌 PDF 的渲染常常长时间转圈；
+    # 需要站内预览时用 ?inline=1。
+    disposition = "inline" if inline else "attachment"
+    size_kb = os.path.getsize(pdf_path) // 1024 if os.path.exists(pdf_path) else 0
+    logger.info(
+        "PDF %s: %.2fs, %sKB, %s, %s",
+        rel_path, time.time() - t_pdf, size_kb, disposition,
+        "强制重算" if force else "正常",
+    )
     return FileResponse(
         pdf_path,
         media_type="application/pdf",
         filename=filename,
         headers={
             "Content-Disposition": (
-                f'inline; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(filename)}'
+                f"{disposition}; filename=\"{ascii_name}\"; "
+                f"filename*=UTF-8''{quote(filename)}"
             ),
             "Cache-Control": "no-store",
         },
@@ -924,8 +936,8 @@ async def pdf_regenerate(request: Request, rel_path: str):
 
 
 @app.get("/api/pdf/{rel_path:path}")
-async def pdf_get(request: Request, rel_path: str):
-    return await _generate_pdf_response(request, rel_path, force=False)
+async def pdf_get(request: Request, rel_path: str, inline: int = Query(0)):
+    return await _generate_pdf_response(request, rel_path, force=False, inline=bool(inline))
 
 
 @app.post("/api/pdf/{rel_path:path}")

@@ -206,7 +206,7 @@ async def generate_pdf(
         try:
             # Normal file:// navigation, NOT set_content(): MathJax must scan a
             # fully-parsed DOM or it only renders whatever existed mid-write.
-            await page.goto("file://" + tmp_path, wait_until="load", timeout=60000)
+            await page.goto("file://" + tmp_path, wait_until="load", timeout=30000)
 
             if 'class="mermaid"' in full_html:
                 try:
@@ -215,7 +215,7 @@ async def generate_pdf(
                         "  const nodes = document.querySelectorAll('.mermaid');"
                         "  return nodes.length === 0 || Array.from(nodes).every(n => n.querySelector('svg'));"
                         "}",
-                        timeout=20000,
+                        timeout=15000,
                     )
                 except Exception:
                     pass
@@ -226,7 +226,7 @@ async def generate_pdf(
                     await page.wait_for_function(
                         "() => typeof MathJax !== 'undefined' && "
                         "MathJax.startup && MathJax.typesetPromise",
-                        timeout=60000,
+                        timeout=15000,
                     )
                 except Exception:
                     pass
@@ -242,7 +242,7 @@ async def generate_pdf(
                     )
                     await page.wait_for_function(
                         "() => window.__rwsMathDone === true",
-                        timeout=120000,
+                        timeout=45000,
                     )
                 except Exception:
                     pass
@@ -251,7 +251,7 @@ async def generate_pdf(
                 await page.wait_for_function(
                     "() => Array.from(document.querySelectorAll('img'))"
                     ".every(i => i.complete && i.naturalWidth > 0)",
-                    timeout=30000,
+                    timeout=15000,
                 )
             except Exception:
                 pass

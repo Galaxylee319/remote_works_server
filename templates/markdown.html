@@ -49,6 +49,7 @@ document.addEventListener('DOMContentLoaded', function() {
   <a href="/download/{{ entry.path }}" download>下载 .md</a>
   {% if pdf_enabled %}
   <a href="/api/pdf/{{ entry.path }}" id="pdf-link">下载 PDF</a>
+  <a href="/api/pdf/{{ entry.path }}?inline=1" target="_blank" rel="noopener" style="font-size:0.8rem;">站内预览</a>
   <a href="#" onclick="regeneratePDF(event)" style="font-size:0.8rem;">重新生成 PDF</a>
   {% endif %}
 </div>
