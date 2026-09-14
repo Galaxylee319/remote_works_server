@@ -1,6 +1,16 @@
 """PDF generation: Playwright/Chromium HTML->PDF with content-hash cache (v2)."""
 from __future__ import annotations
 
+import os as _os
+
+# Chromium 安装目录：Playwright 默认放在 ~/.cache/ms-playwright，
+# 而 ~/.cache 常被磁盘清理顺手删除（已两次导致 PDF 导出失效：2026-09-10、2026-09-13）。
+# 改到受保护路径 ~/playwright-browsers，并允许用环境变量覆盖。
+_os.environ.setdefault(
+    "PLAYWRIGHT_BROWSERS_PATH",
+    _os.path.expanduser("~/playwright-browsers"),
+)
+
 import asyncio
 import hashlib
 import html as html_module
