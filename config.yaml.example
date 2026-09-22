@@ -1,0 +1,63 @@
+# ============================================================
+# Remote Works Server 配置示例
+# 用法：cp config.yaml.example config.yaml，再按本机实际情况修改
+# 说明：真实的 config.yaml 含密码哈希与本机绝对路径，已加入 .gitignore，不入库
+# ============================================================
+
+# 服务根目录（要浏览的内容目录，支持 ~ 展开）
+root_dir: ~/remote_works
+# PDF / 临时缓存目录
+cache_dir: ~/.cache/remote_works_server
+# 监听地址与端口（0.0.0.0 = 允许局域网访问；仅本机用 127.0.0.1）
+host: 0.0.0.0
+port: 8088
+
+auth:
+  enabled: true
+  username: galaxybot          # 登录用户名，可改
+  password_hash: ""            # 留空：install.sh 会交互式设置（bcrypt）
+  session_ttl_days: 30
+  cookie_secure: false         # 走 HTTPS 反代时改为 true
+  max_login_attempts: 5
+  login_lockout_seconds: 300
+
+markdown:
+  math: true
+  mermaid: true
+  toc: true
+  highlight: true
+
+pdf:
+  enabled: true
+  engine: playwright
+  cache: true
+  page_format: A4
+
+search:
+  exclude_dirs:
+    - data
+    - typeI_logs
+    - .git
+  exclude_patterns:
+    - __pycache__
+    - "*.pyc"
+  max_files: 50000
+  max_results: 100
+  content_search: true         # 正文全文检索
+  content_max_files: 60        # 最多返回多少个命中文件
+  content_max_file_mb: 2       # 单文件读取上限（MB）
+
+zip:
+  enabled: true
+  max_files: 5000
+  max_bytes: 2147483648
+
+server:
+  title: 远程工作区
+  version: "2.0.0"
+
+# 需要实时镜像到服务根目录的外部文件夹（格式：<显示名>: <源目录绝对路径>）
+# 不需要就保持 {}；改动后重启 rws-sync 服务生效
+sync_dirs: {}
+#  codex报告: /home/<your-user>/XVR-SVIO/codex报告
+#  论文翻译: /home/<your-user>/paper_translation
