@@ -96,7 +96,10 @@ fi
 
 if [ ${#fails[@]} -eq 0 ]; then
   echo "[rws-healthcheck] OK  http=$http_state pdf=$pdf_state sync=$sync_state disk=${avail_mb}MB"
-  [ ${#notes[@]} -gt 0 ] && printf '[rws-healthcheck] 自愈: %s\n' "${notes[*]}"
+  # 注意：这里必须显式 exit 0。原先的 `[ ... ] && printf` 在 notes 为空时返回 1，
+  # 作为脚本最后一条命令会让整个脚本以 1 退出，systemd 因此每天误判 failed。
+  if [ ${#notes[@]} -gt 0 ]; then printf '[rws-healthcheck] 自愈: %s\n' "${notes[*]}"; fi
+  exit 0
 else
   echo "[rws-healthcheck] FAIL: $(IFS='; '; echo "${fails[*]}")"
   exit 1
